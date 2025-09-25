@@ -12,4 +12,6 @@ Here are some useful database/sources/reports are may helpful for our challenge:
 
 - Landi is the retail subsidiary of Fenaco, Switzerland’s largest agricultural cooperative, focusing on serving rural consumers. Fenaco is an alliance of 137 agricultural cooperatives, with around 40,000 members, including active farmers. As part of Fenaco, Landi operates approximately 270 stores, providing agricultural supplies, food, home, and gardening products. Fenaco and Landi together form a cooperative group aimed at supporting the Swiss agricultural and food sector. The logistics and storages of Landi: https://www.landischweiz.ch/en/services#c328 The location of Landi stores can be founded in https://www.landi.ch/places/de?utm_source=chatgpt.com
 
-- The smart supply chian system ""System MAXI" of Fenaco: https://www.fenaco-gof.ch/en/system-maxi/
+- The smart supply chian system "System MAXI" of Fenaco: https://www.fenaco-gof.ch/en/system-maxi/
+
+- 
