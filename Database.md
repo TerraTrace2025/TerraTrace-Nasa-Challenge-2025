@@ -6,4 +6,6 @@ Here are some useful database/sources/reports are may helpful for our challenge:
 
 - Agrarbericht 2023 (Kanton Zuerich): https://www.zh.ch/content/dam/zhweb/bilder-dokumente/themen/umwelt-tiere/landwirtschaft/agrarbericht/00_agrarbericht-2023.pdf
 
+- The biggest local food/crop supplier in Switzerland: Fenaco Genossenschaft, info about the warehouse (locations, volumes, etc): Storage: https://www.fenaco-gof.ch/en/storage/, Auhafen: https://www.fenaco-gof.ch/en/auhafen/, Silo Olten: https://www.fenaco-gof.ch/en/silo-olten/
+
 - 
