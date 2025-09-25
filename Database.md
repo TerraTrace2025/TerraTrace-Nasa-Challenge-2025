@@ -17,3 +17,5 @@ Here are some useful database/sources/reports are may helpful for our challenge:
 - Fenaco 2024 Financial Overview：https://www.fenaco.com/artikel/stabiles-geschaeftsjahr-2024-fuer-die-fenaco
 
 - The harvest season and time of common crops in Switzerland: https://www.swiss-farmers.ch/knowledge/production/arable-farming/?utm_source=chatgpt.com
+
+- Switzerland Wheat Area, Yield and Production: https://ipad.fas.usda.gov/countrysummary/Default.aspx?id=SZ&crop=Wheat / Forecast: Wheat Demand in Switzerland: https://www.reportlinker.com/dataset/83b268f7e57e8706085453d2acd2b0a18bea81a7?utm_source=chatgpt.com
