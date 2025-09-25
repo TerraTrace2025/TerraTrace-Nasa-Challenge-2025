@@ -8,6 +8,6 @@ Here are some useful database/sources/reports are may helpful for our challenge:
 
 - The biggest local food/crop supplier in Switzerland: Fenaco Genossenschaft, info about the warehouse (locations, volumes, etc): Storage: https://www.fenaco-gof.ch/en/storage/, Auhafen: https://www.fenaco-gof.ch/en/auhafen/, Silo Olten: https://www.fenaco-gof.ch/en/silo-olten/, Locations: https://www.fenaco-gof.ch/en/locations/
 
-- Organic collection centres in the System MAXI (Fenaco): https://www.fenaco-gof.ch/en/harvest-and-cultivation/ (This in the important one, we could use it as the locations of the crops in Switzerland?)
+- Organic collection centres in the System MAXI (Fenaco): https://www.fenaco-gof.ch/en/harvest-and-cultivation/  (This in the important one, we could use it as the locations of the crops in Switzerland?)
 
 - 
