@@ -14,4 +14,6 @@ Here are some useful database/sources/reports are may helpful for our challenge:
 
 - The smart supply chian system "System MAXI" of Fenaco: https://www.fenaco-gof.ch/en/system-maxi/
 
-- Fenaco 2024 Financial Overview：https://www.fenaco.com/artikel/stabiles-geschaeftsjahr-2024-fuer-die-fenaco 
+- Fenaco 2024 Financial Overview：https://www.fenaco.com/artikel/stabiles-geschaeftsjahr-2024-fuer-die-fenaco
+
+- The harvest season and time of common crops in Switzerland: https://www.swiss-farmers.ch/knowledge/production/arable-farming/?utm_source=chatgpt.com
