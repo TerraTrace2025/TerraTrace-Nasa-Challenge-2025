@@ -1,5 +1,21 @@
 Here are some useful database/sources/reports are may helpful for our challenge:
 
+# Update: 25.09.2025, 7 pm
+
+- The domestic transportation in Switzerland, ratio between truck and train (2022): https://www.swissstats.bfs.admin.ch/data/webviewer/appId/ch.admin.bfs.swissstat/article/issue231111892200-01/package?utm_source=chatgpt.com
+
+- Through its Fenaco-GOF division, Fenaco controls around 30% of the Swiss grain and oilseed trading market (company information). In the feed sector, Fenaco (mainly via UFA AG) accounts for approximately 50–53% of the Swiss compound feed market (Swiss SECO government report).
+
+- ### Fenaco → Landi Supply Chain (Swiss Wheat Example)
+Farmers (Wheat Production) --> Fenaco Collection Points / Silos --> Fenaco Quality Control & Storage --> Fenaco Milling / Feed Processing (UFA) --> Fenaco Logistics (Truck / Rail Distribution) --> Landi Regional Warehouses --> Landi Retail Stores --> Consumers & Farmers
+
+1. Wheat Production: Locations: https://www.fenaco-gof.ch/en/harvest-and-cultivation/ & Area, Yield and Production: https://ipad.fas.usda.gov/countrysummary/Default.aspx?id=SZ&crop=Wheat & Harvest time (for possible climate change or bad weather): https://www.swiss-farmers.ch/knowledge/production/arable-farming/?utm_source=chatgpt.com
+2. Silos: https://www.fenaco-gof.ch/en/silo-olten/, https://www.fenaco-gof.ch/en/locations/
+3. Storage (Location, Capacity): https://www.fenaco-gof.ch/en/storage/
+4. Logistics: Landi (https://www.landischweiz.ch/en/services#c328), fenaco (TRAVECO: 370 Lastwagen, 24 Hours: https://www.fenaco.com/unternehmen/traveco), we should consider the remaining transportation by rail
+5.  Warehouse/Storage, Landi: https://www.landischweiz.ch/en/services#c328
+6.  Landi Retail Stores: https://www.landi.ch/places/de?utm_source=chatgpt.com
+
 # Update: 25.09.2025, 4 pm
 
 - The top 5 crops in Switzerland are (survey in 2023, sorted by cereal fields): Wheat (foodstuff, 49%), Barley (18.6%), Corn (11.1%), Wheat (feedstuff, 6.0%), Spelt (6.0%). Link: https://www.sbv-usp.ch/en/services/agristat-swiss-agriculture-in-figures/swiss-agriculture-graphics
@@ -24,11 +40,4 @@ Here are some useful database/sources/reports are may helpful for our challenge:
 
 - Open data (Swiss climate): https://www.meteoswiss.admin.ch/services-and-publications/service/open-data.html
 
-# Update: 25.09.2025, 7 pm
 
-- The domestic transportation in Switzerland, ratio between truck and train (2022): https://www.swissstats.bfs.admin.ch/data/webviewer/appId/ch.admin.bfs.swissstat/article/issue231111892200-01/package?utm_source=chatgpt.com
-
-- Through its Fenaco-GOF division, Fenaco controls around 30% of the Swiss grain and oilseed trading market (company information). In the feed sector, Fenaco (mainly via UFA AG) accounts for approximately 50–53% of the Swiss compound feed market (Swiss SECO government report).
-
-- ### Fenaco → Landi Supply Chain (Swiss Wheat Example)
-Farmers (Wheat Production) --> Fenaco Collection Points / Silos --> Fenaco Quality Control & Storage --> Fenaco Milling / Feed Processing (UFA) --> Fenaco Logistics (Truck / Rail Distribution) --> Landi Regional Warehouses --> Landi Retail Stores --> Consumers & Farmers
