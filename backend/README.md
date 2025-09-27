@@ -18,7 +18,7 @@ $ uv run python3 -m src.scripts.populate_dummy_data
 3. Start backend:
 
 ```
-$ uv run python3 app.py
+$ uv run python3 -m src.app
 ```
 
 

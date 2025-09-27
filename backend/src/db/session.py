@@ -4,7 +4,7 @@ from sqlalchemy.engine import Engine
 from pathlib import Path
 
 # Ensure the database folder exists
-db_path = Path(__file__).parent.parent / "db/data"
+db_path = Path(__file__).parent.parent / "database"
 db_path.mkdir(exist_ok=True)
 
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}/app.db"

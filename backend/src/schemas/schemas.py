@@ -23,7 +23,7 @@ class CompanyRead(CompanyBase):
     created_at: datetime
     updated_at: datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # --- Company Needs ---
@@ -38,7 +38,7 @@ class CompanyNeedsRead(CompanyNeedsBase):
     id: int
     created_at: datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # --- Supplier ---
@@ -57,7 +57,7 @@ class SupplierRead(SupplierBase):
     id: int
     created_at: datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # --- Supplier Stock ---
@@ -74,7 +74,7 @@ class SupplierStockRead(SupplierStockBase):
     id: int
     created_at: datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # --- Company-Supplier Mapping ---
@@ -91,7 +91,7 @@ class CompanySupplierMappingRead(CompanySupplierMappingBase):
     id: int
     created_at: datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # --- Alerts ---
@@ -108,7 +108,7 @@ class AlertRead(AlertBase):
     id: int
     created_at: datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # --- Recommendations ---
@@ -125,4 +125,4 @@ class RecommendationRead(RecommendationBase):
     id: int
     created_at: datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
