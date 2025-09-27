@@ -22,7 +22,7 @@ def get_current_company_details(current_company: models.Company = Depends(get_cu
     return current_company
 
 # DELETE: Delete the current company
-@router.delete("/")
+@router.delete("/", response_model=schemas.MessageResponse)
 def delete_current_company(current_company: models.Company = Depends(get_current_company), db: Session = Depends(get_db)):
     db.delete(current_company)
     db.commit()

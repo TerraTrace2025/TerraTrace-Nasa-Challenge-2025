@@ -126,3 +126,7 @@ class RecommendationRead(RecommendationBase):
     created_at: datetime
     class Config:
         from_attributes = True
+
+
+class MessageResponse(BaseModel):
+    message: str

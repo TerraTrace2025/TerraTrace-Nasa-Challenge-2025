@@ -29,7 +29,7 @@ def list_mappings(current_company: models.Company = Depends(get_current_company)
     ).all()
 
 # DELETE: Delete a mapping (only current company)
-@router.delete("/{mapping_id}")
+@router.delete("/{mapping_id}", response_model=schemas.MessageResponse)
 def delete_mapping(mapping_id: int, current_company: models.Company = Depends(get_current_company), db: Session = Depends(get_db)):
     db_mapping = db.query(models.CompanySupplierMapping).get(mapping_id)
     if not db_mapping:

@@ -23,7 +23,7 @@ def get_current_company_needs(current_company: models.Company = Depends(get_curr
     return needs
 
 # DELETE: Delete a need (only the owner company)
-@router.delete("/{need_id}")
+@router.delete("/{need_id}", response_model=schemas.MessageResponse)
 def delete_need(need_id: int, current_company: models.Company = Depends(get_current_company), db: Session = Depends(get_db)):
     db_need = db.query(models.CompanyNeeds).get(need_id)
     if not db_need:
