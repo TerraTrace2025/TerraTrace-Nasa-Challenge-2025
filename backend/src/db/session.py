@@ -1,14 +1,19 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import Engine
+from pathlib import Path
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"
+# Ensure the database folder exists
+db_path = Path(__file__).parent.parent / "db/data"
+db_path.mkdir(exist_ok=True)
+
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}/app.db"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 
-# Enable foreign key support in SQLite for ON DELETE CASCADE
+# Enable foreign keys for SQLite
 @event.listens_for(Engine, "connect")
 def enable_sqlite_fk(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
@@ -16,7 +21,6 @@ def enable_sqlite_fk(dbapi_connection, connection_record):
     cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 
 def get_db():
     db = SessionLocal()
