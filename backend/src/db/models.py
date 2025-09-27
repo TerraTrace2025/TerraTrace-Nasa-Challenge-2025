@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from src.db.base import Base
 import enum
+from passlib.context import CryptContext
 
 
 def now():
@@ -60,6 +61,11 @@ class Company(Base):
     mappings = relationship(
         "CompanySupplierMapping", back_populates="company", cascade="all, delete-orphan"
     )
+
+    user = relationship(
+        "CompanyUser", back_populates="company", uselist=False, cascade="all, delete-orphan"
+    )
+
 
 
 class CompanyNeeds(Base):
@@ -143,3 +149,26 @@ class Recommendation(Base):
     company = relationship("Company")
     risky_supplier = relationship("Supplier", foreign_keys=[risky_supplier_id])
     alternative_supplier = relationship("Supplier", foreign_keys=[alternative_supplier_id])
+
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class CompanyUser(Base):
+    __tablename__ = "company_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, unique=True)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+    # Relationship
+    company = relationship("Company", back_populates="user")
+
+    # --- Password methods ---
+    def set_password(self, password: str):
+        self.hashed_password = pwd_context.hash(password)
+
+    def verify_password(self, password: str) -> bool:
+        return pwd_context.verify(password, self.hashed_password)

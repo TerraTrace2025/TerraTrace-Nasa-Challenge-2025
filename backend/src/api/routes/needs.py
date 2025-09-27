@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from src.db.session import get_db
 from src.db import models
 from src.schemas import schemas
+from src.api.dependencies.auth import get_current_company
 
 router = APIRouter(prefix="/needs", tags=["needs"])
 
+# POST: Create a new need (open for anyone)
 @router.post("/", response_model=schemas.CompanyNeedsRead)
 def create_need(need: schemas.CompanyNeedsCreate, db: Session = Depends(get_db)):
     db_need = models.CompanyNeeds(**need.dict())
@@ -14,20 +16,23 @@ def create_need(need: schemas.CompanyNeedsCreate, db: Session = Depends(get_db))
     db.refresh(db_need)
     return db_need
 
+# GET: Retrieve all needs for the current logged-in company
 @router.get("/", response_model=list[schemas.CompanyNeedsRead])
-def list_needs(db: Session = Depends(get_db)):
-    return db.query(models.CompanyNeeds).all()
+def get_current_company_needs(current_company: models.Company = Depends(get_current_company), db: Session = Depends(get_db)):
+    needs = db.query(models.CompanyNeeds).filter(models.CompanyNeeds.company_id == current_company.id).all()
+    return needs
 
+# DELETE: Delete a need (only the owner company)
 @router.delete("/{need_id}")
-def delete_need(need_id: int, db: Session = Depends(get_db)):
+def delete_need(need_id: int, current_company: models.Company = Depends(get_current_company), db: Session = Depends(get_db)):
     db_need = db.query(models.CompanyNeeds).get(need_id)
     if not db_need:
-        return {"error": "Need not found"}
+        raise HTTPException(status_code=404, detail="Need not found")
+    if db_need.company_id != current_company.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You can only delete your own company's needs"
+        )
     db.delete(db_need)
     db.commit()
     return {"message": "Need deleted"}
-
-@router.get("/company/{company_id}", response_model=list[schemas.CompanyNeedsRead])
-def get_needs_by_company(company_id: int, db: Session = Depends(get_db)):
-    needs = db.query(models.CompanyNeeds).filter(models.CompanyNeeds.company_id == company_id).all()
-    return needs

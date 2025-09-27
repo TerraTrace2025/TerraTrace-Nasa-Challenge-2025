@@ -10,6 +10,7 @@ base.Base.metadata.create_all(bind=engine)
 db: Session = SessionLocal()
 
 # --- Clear existing data ---
+db.query(models.CompanyUser).delete()  # clear user table first
 db.query(models.Recommendation).delete()
 db.query(models.Alert).delete()
 db.query(models.CompanySupplierMapping).delete()
@@ -48,6 +49,14 @@ for cdata in companies_data:
     c = models.Company(**cdata)
     db.add(c)
     companies.append(c)
+db.commit()
+
+# --- Add dummy passwords for each company ---
+dummy_passwords = ["123", "abc"]
+for company, pwd in zip(companies, dummy_passwords):
+    user = models.CompanyUser(company_id=company.id)
+    user.set_password(pwd)
+    db.add(user)
 db.commit()
 
 # --- Dummy Suppliers ---
@@ -146,5 +155,5 @@ for company in companies:
         db.add(rec)
 db.commit()
 
-print("✅ Dummy data populated successfully!")
+print("✅ Dummy data with company passwords populated successfully!")
 db.close()

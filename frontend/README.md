@@ -7,23 +7,8 @@ First copy the contents of the .env.example file into a new .env file on the sam
 $ uv sync
 ```
 
-
-2. Fill database with dummy data:
-
-```
-$ uv run python3 -m src.scripts.populate_dummy_data
-```
-
-
-3. Start backend:
+2. Start frontend:
 
 ```
 $ uv run python3 -m src.app
-```
-
-
-4. Test with e.g. postman:
-
-```
-GET http://127.0.0.1:8000/api/companies/
 ```

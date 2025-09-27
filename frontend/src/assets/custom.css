@@ -1,0 +1,9 @@
+body {
+    background-color: #f8f9fa;
+}
+
+#company-container {
+    max-width: 600px;
+    margin: auto;
+    margin-top: 50px;
+}
