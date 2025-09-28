@@ -1,12 +1,9 @@
-from sqlalchemy import (
-    Column, Integer, String, Float, Date, DateTime, ForeignKey, Text, Enum
-)
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Text, Enum
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from src.db.base import Base
 import enum
 from passlib.context import CryptContext
-
 
 def now():
     return datetime.utcnow()
@@ -16,8 +13,6 @@ def now():
 class TransportMode(str, enum.Enum):
     truck = "truck"
     train = "train"
-    ship = "ship"
-    air = "air"
 
 
 class CropType(str, enum.Enum):
@@ -45,38 +40,24 @@ class Company(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True, index=True)
     budget_limit = Column(Float, nullable=True)
-    preferred_transport_modes = Column(Enum(TransportMode), nullable=True)
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
 
+    # Address info
     country = Column(String, nullable=False)
     city = Column(String, nullable=False)
     street = Column(String, nullable=True)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
 
-    needs = relationship(
-        "CompanyNeeds", back_populates="company", cascade="all, delete-orphan"
-    )
-    mappings = relationship(
-        "CompanySupplierMapping", back_populates="company", cascade="all, delete-orphan"
+    # Relationships
+    stock_mappings = relationship(
+        "CompanyStockMapping", back_populates="company", cascade="all, delete-orphan"
     )
 
     user = relationship(
         "CompanyUser", back_populates="company", uselist=False, cascade="all, delete-orphan"
     )
-
-
-
-class CompanyNeeds(Base):
-    __tablename__ = "company_needs"
-    id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    crop_type = Column(Enum(CropType), nullable=False, index=True)
-    required_volume = Column(Float, nullable=False)
-    created_at = Column(DateTime, default=now)
-
-    company = relationship("Company", back_populates="needs")
 
 
 class Supplier(Base):
@@ -85,18 +66,18 @@ class Supplier(Base):
     name = Column(String, nullable=False, index=True)
     created_at = Column(DateTime, default=now)
 
+    # Address info
     country = Column(String, nullable=False)
     city = Column(String, nullable=False)
     street = Column(String, nullable=True)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
 
+    # Relationships
     stocks = relationship(
         "SupplierStock", back_populates="supplier", cascade="all, delete-orphan"
     )
-    mappings = relationship(
-        "CompanySupplierMapping", back_populates="supplier", cascade="all, delete-orphan"
-    )
+    alerts = relationship("Alert", back_populates="supplier", cascade="all, delete-orphan")
 
 
 class SupplierStock(Base):
@@ -111,18 +92,23 @@ class SupplierStock(Base):
 
     supplier = relationship("Supplier", back_populates="stocks")
 
+    # Mapping to companies
+    company_mappings = relationship(
+        "CompanyStockMapping", back_populates="stock", cascade="all, delete-orphan"
+    )
 
-class CompanySupplierMapping(Base):
-    __tablename__ = "company_supplier_mappings"
+
+class CompanyStockMapping(Base):
+    __tablename__ = "company_stock_mappings"
     id = Column(Integer, primary_key=True, index=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
-    crop_type = Column(Enum(CropType), nullable=False)
+    stock_id = Column(Integer, ForeignKey("supplier_stocks.id", ondelete="CASCADE"), nullable=False)
     agreed_volume = Column(Float, nullable=False)
     created_at = Column(DateTime, default=now)
+    transportation_mode = Column(Enum(TransportMode), nullable=False)
 
-    company = relationship("Company", back_populates="mappings")
-    supplier = relationship("Supplier", back_populates="mappings")
+    company = relationship("Company", back_populates="stock_mappings")
+    stock = relationship("SupplierStock", back_populates="company_mappings")
 
 
 class Alert(Base):
@@ -134,7 +120,7 @@ class Alert(Base):
     message = Column(Text, nullable=False)
     created_at = Column(DateTime, default=now)
 
-    supplier = relationship("Supplier")
+    supplier = relationship("Supplier", back_populates="alerts")
 
 
 class Recommendation(Base):
@@ -163,10 +149,8 @@ class CompanyUser(Base):
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
 
-    # Relationship
     company = relationship("Company", back_populates="user")
 
-    # --- Password methods ---
     def set_password(self, password: str):
         self.hashed_password = pwd_context.hash(password)
 

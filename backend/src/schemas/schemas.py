@@ -1,14 +1,12 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, date
 from src.db.models import TransportMode, CropType, AlertType, Severity
-
 
 # --- Company ---
 class CompanyBase(BaseModel):
     name: str
     budget_limit: Optional[float] = None
-    preferred_transport_modes: Optional[TransportMode] = None
     country: str
     city: str
     street: Optional[str] = None
@@ -22,21 +20,7 @@ class CompanyRead(CompanyBase):
     id: int
     created_at: datetime
     updated_at: datetime
-    class Config:
-        from_attributes = True
 
-
-# --- Company Needs ---
-class CompanyNeedsBase(BaseModel):
-    crop_type: CropType
-    required_volume: float
-
-class CompanyNeedsCreate(CompanyNeedsBase):
-    company_id: int
-
-class CompanyNeedsRead(CompanyNeedsBase):
-    id: int
-    created_at: datetime
     class Config:
         from_attributes = True
 
@@ -56,6 +40,7 @@ class SupplierCreate(SupplierBase):
 class SupplierRead(SupplierBase):
     id: int
     created_at: datetime
+
     class Config:
         from_attributes = True
 
@@ -73,23 +58,25 @@ class SupplierStockCreate(SupplierStockBase):
 class SupplierStockRead(SupplierStockBase):
     id: int
     created_at: datetime
+
     class Config:
         from_attributes = True
 
 
-# --- Company-Supplier Mapping ---
-class CompanySupplierMappingBase(BaseModel):
+# --- Company-Stock Mapping ---
+class CompanyStockMappingBase(BaseModel):
     company_id: int
-    supplier_id: int
-    crop_type: CropType
+    stock_id: int
     agreed_volume: float
+    transportation_mode: TransportMode
 
-class CompanySupplierMappingCreate(CompanySupplierMappingBase):
+class CompanyStockMappingCreate(CompanyStockMappingBase):
     pass
 
-class CompanySupplierMappingRead(CompanySupplierMappingBase):
+class CompanyStockMappingRead(CompanyStockMappingBase):
     id: int
     created_at: datetime
+
     class Config:
         from_attributes = True
 
@@ -107,6 +94,7 @@ class AlertCreate(AlertBase):
 class AlertRead(AlertBase):
     id: int
     created_at: datetime
+
     class Config:
         from_attributes = True
 
@@ -124,9 +112,11 @@ class RecommendationCreate(RecommendationBase):
 class RecommendationRead(RecommendationBase):
     id: int
     created_at: datetime
+
     class Config:
         from_attributes = True
 
 
+# --- General Response ---
 class MessageResponse(BaseModel):
     message: str

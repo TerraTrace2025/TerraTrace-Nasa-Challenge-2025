@@ -23,7 +23,7 @@ CONTAINER_STYLE = {"height": "100vh", "overflow": "hidden", "padding": "0"}
 app.layout = html.Div([
     dcc.Store(id="token-store"),
 
-    # Login Card (reverting to old styling)
+    # Login Card
     dbc.Card([
         html.H3("Login", className="text-center mb-4"),
         dbc.Label("Company Name"),
@@ -72,7 +72,8 @@ app.layout = html.Div([
                         columns=[
                             {"name": "Supplier", "id": "supplier_name"},
                             {"name": "Crop Type", "id": "crop_type"},
-                            {"name": "Agreed Volume", "id": "agreed_volume"}
+                            {"name": "Agreed Volume", "id": "agreed_volume"},
+                            {"name": "Transportation Mode", "id": "transportation_mode"}
                         ],
                         style_table={"overflowX": "auto"},
                         style_cell={"textAlign": "left"},
@@ -128,16 +129,17 @@ def load_dashboard(token):
     # --- Company info ---
     comp_res = requests.get(f"{API_BASE_URL}/companies/", headers=headers)
     company = comp_res.json()
+
     company_card = dbc.CardBody([
         html.H4(company["name"], className="card-title"),
         html.P(f"Budget Limit: {company['budget_limit']}"),
         html.P(f"City: {company['city']}, {company['country']}"),
-        html.P(f"Transport: {company['preferred_transport_modes']}")
     ])
 
     # --- Suppliers ---
     sup_res = requests.get(f"{API_BASE_URL}/suppliers/", headers=headers)
     suppliers = sup_res.json()
+    suppliers_dict = {s["id"]: s for s in suppliers}  # lookup by id
 
     # --- Mappings ---
     maps_res = requests.get(f"{API_BASE_URL}/mappings/", headers=headers)
@@ -146,16 +148,37 @@ def load_dashboard(token):
     # Filter mappings for this company
     company_mappings = [m for m in all_mappings if m["company_id"] == company["id"]]
 
-    # Join supplier names
+    # Build a cache of stocks per supplier
+    supplier_stocks_cache = {}
+
     mappings = []
     for m in company_mappings:
-        # Find supplier name from suppliers list
-        supplier_name = next((s["name"] for s in suppliers if s["id"] == m["supplier_id"]), "Unknown")
-        mappings.append({
-            "supplier_name": supplier_name,
-            "crop_type": m.get("crop_type", ""),
-            "agreed_volume": m.get("agreed_volume", "")
-        })
+        stock_id = m["stock_id"]
+
+        # Find the stock
+        stock = None
+        for supplier_id in suppliers_dict:
+            if supplier_id not in supplier_stocks_cache:
+                # fetch stocks for this supplier
+                stocks_res = requests.get(f"{API_BASE_URL}/stocks/supplier/{supplier_id}", headers=headers)
+                supplier_stocks_cache[supplier_id] = stocks_res.json()
+
+            # try to find the stock in this supplier's stocks
+            for s in supplier_stocks_cache[supplier_id]:
+                if s["id"] == stock_id:
+                    stock = s
+                    supplier = suppliers_dict[supplier_id]
+                    break
+            if stock:
+                break
+
+        if stock and supplier:
+            mappings.append({
+                "supplier_name": supplier["name"],
+                "crop_type": stock["crop_type"],
+                "agreed_volume": m["agreed_volume"],
+                "transportation_mode": m["transportation_mode"]
+            })
 
     # --- Map markers ---
     markers = [
@@ -166,7 +189,7 @@ def load_dashboard(token):
         markers.append(dl.Marker(position=[s["latitude"], s["longitude"]],
                                  children=dl.Popup(html.B(f"Supplier: {s['name']}"))))
 
-    # --- Calculate bounds to fit all markers ---
+    # --- Calculate bounds ---
     all_coords = [[company["latitude"], company["longitude"]]] + \
                  [[s["latitude"], s["longitude"]] for s in suppliers]
     min_lat = min(c[0] for c in all_coords)
@@ -175,10 +198,8 @@ def load_dashboard(token):
     max_lon = max(c[1] for c in all_coords)
     bounds = [[min_lat, min_lon], [max_lat, max_lon]]
 
-    # Add TileLayer and markers to map
     map_children = [dl.TileLayer()] + markers
 
-    # Return everything
     return company_card, suppliers, mappings, dl.Map(children=map_children, bounds=bounds, style={"width": "100%", "height": "100%"})
 
 # ---------- Run ----------
