@@ -182,12 +182,19 @@ def load_dashboard(token):
 
     # --- Map markers ---
     markers = [
-        dl.Marker(position=[company["latitude"], company["longitude"]],
-                  children=dl.Popup(html.B(f"Company: {company['name']}"))),
+        dl.Marker(
+            position=[company["latitude"], company["longitude"]],
+            children=dl.Popup(html.B(f"Company: {company['name']}")),
+        ),
     ]
+
     for s in suppliers:
-        markers.append(dl.Marker(position=[s["latitude"], s["longitude"]],
-                                 children=dl.Popup(html.B(f"Supplier: {s['name']}"))))
+        markers.append(
+            dl.Marker(
+                position=[s["latitude"], s["longitude"]],
+                children=dl.Popup(html.B(f"Supplier: {s['name']}")),
+            )
+        )
 
     # --- Calculate bounds ---
     all_coords = [[company["latitude"], company["longitude"]]] + \

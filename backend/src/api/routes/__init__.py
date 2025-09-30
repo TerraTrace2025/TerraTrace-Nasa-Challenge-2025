@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from . import companies, suppliers, stocks, mappings, alerts, recommendations, auth
+from . import companies, suppliers, stocks, mappings, alerts, auth
 
 api_router = APIRouter()
 
@@ -9,4 +9,3 @@ api_router.include_router(suppliers.router)
 api_router.include_router(stocks.router)
 api_router.include_router(mappings.router)
 api_router.include_router(alerts.router)
-api_router.include_router(recommendations.router)

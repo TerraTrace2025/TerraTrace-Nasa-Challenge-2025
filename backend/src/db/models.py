@@ -22,18 +22,6 @@ class CropType(str, enum.Enum):
     corn = "corn"
     barley = "barley"
 
-
-class AlertType(str, enum.Enum):
-    climate_risk = "climate_risk"
-    waste_risk = "waste_risk"
-
-
-class Severity(str, enum.Enum):
-    green = "green"
-    yellow = "yellow"
-    red = "red"
-
-
 # --- Tables ---
 class Company(Base):
     __tablename__ = "companies"
@@ -115,26 +103,11 @@ class Alert(Base):
     __tablename__ = "alerts"
     id = Column(Integer, primary_key=True, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
-    alert_type = Column(Enum(AlertType), nullable=False)
-    severity = Column(Enum(Severity), nullable=False)
+    risk_score = Column(Integer, nullable=False)
     message = Column(Text, nullable=False)
     created_at = Column(DateTime, default=now)
 
     supplier = relationship("Supplier", back_populates="alerts")
-
-
-class Recommendation(Base):
-    __tablename__ = "recommendations"
-    id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    risky_supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
-    alternative_supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
-    reasoning = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=now)
-
-    company = relationship("Company")
-    risky_supplier = relationship("Supplier", foreign_keys=[risky_supplier_id])
-    alternative_supplier = relationship("Supplier", foreign_keys=[alternative_supplier_id])
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

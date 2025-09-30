@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, date
-from src.db.models import TransportMode, CropType, AlertType, Severity
+from src.db.models import TransportMode, CropType
 
 # --- Company ---
 class CompanyBase(BaseModel):
@@ -84,8 +84,7 @@ class CompanyStockMappingRead(CompanyStockMappingBase):
 # --- Alerts ---
 class AlertBase(BaseModel):
     supplier_id: int
-    alert_type: AlertType
-    severity: Severity
+    risk_score: int
     message: str
 
 class AlertCreate(AlertBase):
@@ -97,25 +96,6 @@ class AlertRead(AlertBase):
 
     class Config:
         from_attributes = True
-
-
-# --- Recommendations ---
-class RecommendationBase(BaseModel):
-    company_id: int
-    risky_supplier_id: int
-    alternative_supplier_id: int
-    reasoning: Optional[str] = None
-
-class RecommendationCreate(RecommendationBase):
-    pass
-
-class RecommendationRead(RecommendationBase):
-    id: int
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 # --- General Response ---
 class MessageResponse(BaseModel):

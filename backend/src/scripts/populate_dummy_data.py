@@ -11,7 +11,6 @@ db: Session = SessionLocal()
 
 # --- Clear existing data ---
 db.query(models.CompanyUser).delete()
-db.query(models.Recommendation).delete()
 db.query(models.Alert).delete()
 db.query(models.CompanyStockMapping).delete()
 db.query(models.SupplierStock).delete()
@@ -24,20 +23,20 @@ companies_data = [
     {
         "name": "GreenFarm Inc",
         "budget_limit": 50000,
-        "country": "USA",
-        "city": "San Francisco",
-        "street": "123 Market St",
-        "latitude": 37.7749,
-        "longitude": -122.4194,
+        "country": "Switzerland",
+        "city": "Basel",
+        "street": "Freie Strasse 80",
+        "latitude": 47.5596,
+        "longitude": 7.5886,
     },
     {
         "name": "AgriCorp",
         "budget_limit": 75000,
-        "country": "Germany",
-        "city": "Berlin",
-        "street": "Unter den Linden 5",
-        "latitude": 52.5200,
-        "longitude": 13.4050,
+        "country": "Switzerland",
+        "city": "Bern",
+        "street": "Bundesgasse 20",
+        "latitude": 46.9481,
+        "longitude": 7.4474,
     },
 ]
 
@@ -58,9 +57,30 @@ db.commit()
 
 # --- Suppliers ---
 suppliers_data = [
-    {"name": "Supplier A", "country": "USA", "city": "Los Angeles", "street": "456 Sunset Blvd", "latitude": 34.0522, "longitude": -118.2437},
-    {"name": "Supplier B", "country": "Germany", "city": "Munich", "street": "789 Marienplatz", "latitude": 48.1351, "longitude": 11.5820},
-    {"name": "Supplier C", "country": "France", "city": "Paris", "street": "10 Rue de Rivoli", "latitude": 48.8566, "longitude": 2.3522},
+    {
+        "name": "Supplier A",
+        "country": "Switzerland",
+        "city": "Zurich",
+        "street": "Bahnhofstrasse 100",
+        "latitude": 47.3769,
+        "longitude": 8.5417
+    },
+    {
+        "name": "Supplier B",
+        "country": "Switzerland",
+        "city": "Bern",
+        "street": "Bundesplatz 5",
+        "latitude": 46.9481,
+        "longitude": 7.4474
+    },
+    {
+        "name": "Supplier C",
+        "country": "Switzerland",
+        "city": "Geneva",
+        "street": "Rue du Rhône 50",
+        "latitude": 46.2044,
+        "longitude": 6.1432
+    }
 ]
 
 suppliers = []
@@ -101,8 +121,7 @@ db.commit()
 for supplier in suppliers:
     alert = models.Alert(
         supplier_id=supplier.id,
-        alert_type=random.choice(list(models.AlertType)),
-        severity=random.choice(list(models.Severity)),
+        risk_score=random.random(),
         message=f"Dummy alert for {supplier.name}"
     )
     db.add(alert)
