@@ -31,10 +31,12 @@ from dateutil import parser
 import ipywidgets as widgets
 from IPython.display import display
 from meteostat import Stations, Daily
+import ee
+import geemap
 
 N = 14 # we want to see the risk index in the future 7 days
  year = 2022
- loc_num= 5
+ loc_num= 10
 
 """***Input*** ***1: Crop Information: Names & Locations***"""
 
@@ -292,14 +294,15 @@ for idx, row in selected_crop_loc.iterrows():
 extreme_weather_df = pd.DataFrame(summary_rows)
 print(extreme_weather_df)
 
-def get_forecast_weather(n_days):
+***Weather forecast in the future N days***
+"""
 
-    Fetch forecast daily weather for the next n_days.
-    Converts official weathercode to simplified types like historical data.
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
 
-    FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+def get_forecast_weather(latitude, longitude, n_days):
     start_date = date.today()
-    end_date = start_date + timedelta(days=n_days-1)
+    end_date = start_date + timedelta(days=n_days - 1)
 
     daily_vars = [
         "temperature_2m_max","temperature_2m_min",
@@ -315,122 +318,186 @@ def get_forecast_weather(n_days):
         "end_date": end_date.isoformat(),
         "timezone": "Europe/Zurich"
     }
-    resp = requests.get(FORECAST_URL, params=params)
-    if resp.status_code == 200:
-        df = pd.DataFrame(resp.json()["daily"])
 
-        # map official weathercode to simplified types
-        def code_to_simple(wc, precip, wind, snow):
-            if snow > 0:
-                return "snow"
-            elif precip > 5:
-                return "rain"
-            elif precip > 0 and wind > 10:
-                return "showers/windy"
-            elif wc in [0,1,2]:  # clear/sunny codes
-                return "sunny"
-            else:
-                return "cloudy"
+    resp = requests.get(FORECAST_URL, params=params, timeout=30)
+    resp.raise_for_status()
 
-        df["weathercode"] = df.apply(lambda row: code_to_simple(
-            row["weathercode"], row["precipitation_sum"], row["windspeed_10m_max"], row.get("snowfall_sum",0)
-        ), axis=1)
-        return df
-    else:
-        print("Forecast request failed:", resp.status_code)
-        return None
+    df = pd.DataFrame(resp.json()["daily"])
+    df["time"] = pd.to_datetime(df["time"]).dt.date
+    def code_to_simple(wc, precip, wind, snow):
+        if snow > 0:
+            return "snow"
+        elif precip > 5:
+            return "rain"
+        elif precip > 0 and wind > 10:
+            return "showers/windy"
+        elif wc in [0,1,2]:  # clear/sunny
+            return "sunny"
+        else:
+            return "cloudy"
 
-print("=== Forecast Weather ===")
-try:
-    fc_df = get_forecast_weather(14)  # next 5 days
-    if fc_df is not None:
-        print(fc_df)
-except Exception as e:
-    print("Forecast weather fetch error:", e)
+    df["weather_simple"] = df.apply(
+        lambda row: code_to_simple(
+            row["weathercode"],
+            row["precipitation_sum"],
+            row["windspeed_10m_max"],
+            row.get("snowfall_sum", 0)
+        ),
+        axis=1
+    )
 
-***Input 3: Yield Data (Optional but Recommended)***
-"""
+    return df
+
+THRESHOLDS = {
+    "heatwave_temp_c": 35.0,
+    "strong_wind_ms": 15.0,
+    "heavy_rain_mm": 50.0,
+    "heavy_snow_cm": 20.0
+}
+
+def extreme_weather_alert(lat, lon, n_days=N, timezone="Europe/Zurich"):
+    start_date = date.today()
+    end_date = start_date + timedelta(days=n_days-1)
+
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "daily": "temperature_2m_max,precipitation_sum,snowfall_sum,windspeed_10m_max",
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "timezone": timezone
+    }
+
+    resp = requests.get(OPEN_METEO_FORECAST, params=params)
+    resp.raise_for_status()
+    data = resp.json()
+
+    df = pd.DataFrame(data["daily"])
+
+    alerts = []
+    for i, row in df.iterrows():
+        msg = []
+        if row["temperature_2m_max"] >= THRESHOLDS["heatwave_temp_c"]:
+            msg.append("🔥 Heatwave")
+        if row["windspeed_10m_max"] >= THRESHOLDS["strong_wind_ms"]:
+            msg.append("💨 Strong wind")
+        if row["precipitation_sum"] >= THRESHOLDS["heavy_rain_mm"]:
+            msg.append("🌧️ Heavy rain")
+        if (row["snowfall_sum"] / 10.0) >= THRESHOLDS["heavy_snow_cm"]:  # mm→cm
+            msg.append("❄️ Heavy snow")
+
+        alerts.append(", ".join(msg) if msg else "😃 NA")
+
+    df["extreme_alert"] = alerts
+    return df
+
+forecast_rows = []
+for idx, row in selected_crop_loc.iterrows():
+    lat, lon = row["Latitude"], row["Longitude"]
+    standort = row["Standort"]
+    try:
+        df_forecast = get_forecast_weather(lat, lon, N)
+        df_alert = extreme_weather_alert(lat, lon, N)
+        df_merged = pd.merge(df_forecast, df_alert[["time", "extreme_alert"]], on="time", how="left")
+        df_merged["Standort"] = standort
+        df_merged["Latitude"] = lat
+        df_merged["Longitude"] = lon
+        forecast_rows.append(df_merged)
+        time.sleep(1)
+    except Exception as e:
+        print(f"Forecast failed for {standort}: {e}")
+        time.sleep(1)
+
+forecast_all = pd.concat(forecast_rows, ignore_index=True)
+forecast_all = forecast_all.drop(columns=["Latitude", "Longitude", "weathercode"])
+cols = ["Standort"] + [c for c in forecast_all.columns if c != "Standort"]
+forecast_all = forecast_all[cols]
+
+"""***Input 3: Yield Data (Optional but Recommended)***"""
 
 df = pd.read_csv("FAOSTAT_data.csv")
 
-keywords = ["Wheat", "Barley", "Corn", "Soya", "Rapeseed", "Sunflower"]
+mapping = {
+    "Wheat": "Wheat",
+    "Barley": "Barley",
+    "Maize (corn)": "Corn",
+    "Green corn (maize)": "Corn",
+    "Corn": "Corn",
+    "Soya beans": "Soya",
+    "Soya bean oil": "Soya",
+    "Rapeseed or canola oil, crude": "Rapeseed",
+    "Sunflower seed": "Sunflower",
+    "Sunflower-seed oil, crude": "Sunflower",
+    "Beer of barley, malted": "Barley"
+}
 
+
+keywords = ["Wheat", "Barley", "Corn", "Soya", "Rapeseed", "Sunflower"]
 mask = df["Item"].str.contains('|'.join(keywords), case=False, na=False)
 df_filtered = df[mask]
+
 columns_to_keep = ["Area", "Item", "Year", "Unit", "Value"]
 df_filtered = df_filtered[columns_to_keep]
-print(df_filtered)
+
+df_filtered_t = df_filtered[df_filtered["Unit"] == "t"].copy()
+
+df_filtered_t["Item_clean"] = df_filtered_t["Item"].map(mapping)
+
+df_final = df_filtered_t.groupby(["Year", "Item_clean"], as_index=False)["Value"].sum()
+value_row = df_final[(df_final["Year"] == year) & (df_final["Item_clean"] == selected_crop)]
+value = value_row["Value"].iloc[0]
+print(value)
 
 """***Input 4: Administrative or grid boundaries (crop location)***
 
 """
 
-import ee
-import geemap
+ee.Authenticate()
+ee.Initialize(project='trusty-sentinel-473919-a6')
 
-# =========================
-# 0️⃣ 初始化 Earth Engine
-# =========================
-ee.Authenticate()  # 只需运行一次，会弹出授权
-ee.Initialize(project='trusty-sentinel-473919-a6')  # 填入你的项目ID
+def compute_ndvi_df(selected_crop_loc, selected_crop, year, total_yield=value, buffer_m=500):
+    """
+    selected_crop_loc: pd.DataFrame with columns Standort, Latitude, Longitude
+    selected_crop: str, e.g., "Corn"
+    year: int
+    total_yield: float, total yield for this crop
+    buffer_m: int, buffer in meters for NDVI averaging
+    Returns: pd.DataFrame with Standort, crop, ndvi, estimated_yield
+    """
+    start_date = f"{year}-01-01"
+    end_date = f"{year}-12-31"
 
-# =========================
-# 1️⃣ 设置作物产地
-# =========================
-locations = [
-    {"name": "Ersigen", "lat": 47.093969, "lon": 7.600372, "crop": "Barley"},
-    {"name": "Düdingen", "lat": 46.849259, "lon": 7.187919, "crop": "Barley"},
-    {"name": "Bercher", "lat": 46.691383, "lon": 6.708446, "crop": "Barley"}
-    # 可继续补充其他地点
-]
+    all_points = ee.Geometry.MultiPoint([[row["Longitude"], row["Latitude"]] for idx, row in selected_crop_loc.iterrows()])
 
-# =========================
-# 2️⃣ 获取 Sentinel-2 遥感影像并计算 NDVI
-# =========================
-# 这里 filterBounds 先取全部地点的范围
-all_points = ee.Geometry.MultiPoint([[loc["lon"], loc["lat"]] for loc in locations])
+    collection = (ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+                  .filterDate(start_date, end_date)
+                  .filterBounds(all_points)
+                  .map(lambda img: img.normalizedDifference(['B8', 'B4']).rename('NDVI')))
 
-collection = (ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-              .filterDate("2024-04-01", "2024-09-30")  # 生长季
-              .filterBounds(all_points)
-              .map(lambda img: img.normalizedDifference(['B8', 'B4']).rename('NDVI')))
+    results = []
+    for idx, row in selected_crop_loc.iterrows():
+        point = ee.Geometry.Point([row["Longitude"], row["Latitude"]])
+        ndvi_ts = collection.mean().reduceRegion(
+            reducer=ee.Reducer.mean(),
+            geometry=point.buffer(buffer_m),
+            scale=10
+        )
+        ndvi_value = ndvi_ts.get("NDVI").getInfo()
+        results.append({
+            "Standort": row["Standort"],
+            "crop": selected_crop,
+            "ndvi": ndvi_value
+        })
 
-# =========================
-# 3️⃣ 提取每个地点 NDVI
-# =========================
-def get_ndvi(loc):
-    point = ee.Geometry.Point([loc["lon"], loc["lat"]])
-    ndvi_ts = collection.mean().reduceRegion(
-        reducer=ee.Reducer.mean(),
-        geometry=point.buffer(500),  # 500m 缓冲区
-        scale=10
-    )
-    ndvi_value = ndvi_ts.get("NDVI").getInfo()  # 可能是 None
-    return {
-        "name": loc["name"],
-        "crop": loc["crop"],
-        "ndvi": ndvi_value
-    }
+    valid_points = [r for r in results if r["ndvi"] is not None]
+    if valid_points:
+        ndvi_sum = sum(r["ndvi"] for r in valid_points)
+        for r in valid_points:
+            r["estimated_yield"] = (r["ndvi"] / ndvi_sum) * total_yield
+    else:
+        print("⚠️ All NDVI values are None!")
 
-results = [get_ndvi(loc) for loc in locations]
+    return pd.DataFrame(results)
 
-# =========================
-# 4️⃣ 用 NDVI 分配产量
-# =========================
-total_barley = 100000  # 瑞士大麦总产量
-barley_points = [r for r in results if r["crop"] == "Barley"]
-
-# 只保留 NDVI 有效的点
-valid_points = [r for r in barley_points if r["ndvi"] is not None]
-
-# 如果没有有效 NDVI，避免除以 0
-if valid_points:
-    ndvi_sum = sum(r["ndvi"] for r in valid_points)
-    for r in valid_points:
-        r["estimated_yield"] = (r["ndvi"] / ndvi_sum) * total_barley
-else:
-    print("⚠️ 所有地点 NDVI 都为 None！无法分配产量。")
-
-# 打印结果
-for r in valid_points:
-    print(f"{r['name']}: NDVI={r['ndvi']:.3f}, Estimated Yield={r['estimated_yield']:.1f} t")
+df_ndvi = compute_ndvi_df(selected_crop_loc, selected_crop, year=year, total_yield=value)
+print(df_ndvi)
