@@ -315,8 +315,10 @@ dependencies = [
     { name = "dash-leaflet" },
     { name = "dash-table" },
     { name = "dotenv" },
+    { name = "gunicorn" },
     { name = "ipyleaflet" },
     { name = "requests" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -326,8 +328,10 @@ requires-dist = [
     { name = "dash-leaflet", specifier = ">=1.1.3" },
     { name = "dash-table", specifier = ">=5.0.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
+    { name = "gunicorn", specifier = ">=23.0.0" },
     { name = "ipyleaflet", specifier = ">=0.20.0" },
     { name = "requests", specifier = ">=2.32.5" },
+    { name = "uvicorn", specifier = ">=0.37.0" },
 ]
 
 [[package]]
@@ -342,6 +346,27 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ed/a9/166da74c1e3b8c6b9644c244de75fa5e001b01fe06311721c84471b9296e/geobuf-2.0.0.tar.gz", hash = "sha256:96a347cd8443cc53a65f34f958b45b0e45c4cca8f1ca3b72078a3aec97605a72", size = 46155, upload-time = "2025-02-09T18:59:17.469Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f3/ec/e174665e4b824ecfad1555746a5bc13eb26de85c66ec61f55eb097c433f0/geobuf-2.0.0-py3-none-any.whl", hash = "sha256:01e89318861a5f80a2980c1fe602c1f378439cbfd3a0d99f1991550956c4ecf6", size = 9718, upload-time = "2025-02-09T18:59:13.385Z" },
+]
+
+[[package]]
+name = "gunicorn"
+version = "23.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/34/72/9614c465dc206155d93eff0ca20d42e1e35afc533971379482de953521a4/gunicorn-23.0.0.tar.gz", hash = "sha256:f014447a0101dc57e294f6c18ca6b40227a4c90e9bdb586042628030cba004ec", size = 375031, upload-time = "2024-08-10T20:25:27.378Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/7d/6dac2a6e1eba33ee43f318edbed4ff29151a49b5d37f080aad1e6469bca4/gunicorn-23.0.0-py3-none-any.whl", hash = "sha256:ec400d38950de4dfd418cff8328b2c8faed0edb0d517d3394e457c317908ca4d", size = 85029, upload-time = "2024-08-10T20:25:24.996Z" },
+]
+
+[[package]]
+name = "h11"
+version = "0.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/ee/02a2c011bdab74c6fb3c75474d40b3052059d95df7e73351460c8588d963/h11-0.16.0.tar.gz", hash = "sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1", size = 101250, upload-time = "2025-04-24T03:35:25.427Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", hash = "sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", size = 37515, upload-time = "2025-04-24T03:35:24.344Z" },
 ]
 
 [[package]]
@@ -884,6 +909,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/15/22/9ee70a2574a4f4599c47dd506532914ce044817c7752a79b6a51286319bc/urllib3-2.5.0.tar.gz", hash = "sha256:3fc47733c7e419d4bc3f6b3dc2b4f890bb743906a30d56ba4a5bfa4bbff92760", size = 393185, upload-time = "2025-06-18T14:07:41.644Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/c2/fe1e52489ae3122415c51f387e221dd0773709bad6c6cdaa599e8a2c5185/urllib3-2.5.0-py3-none-any.whl", hash = "sha256:e6b01673c0fa6a13e374b50871808eb3bf7046c4b125b216f6bf1cc604cff0dc", size = 129795, upload-time = "2025-06-18T14:07:40.39Z" },
+]
+
+[[package]]
+name = "uvicorn"
+version = "0.37.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "h11" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/71/57/1616c8274c3442d802621abf5deb230771c7a0fec9414cb6763900eb3868/uvicorn-0.37.0.tar.gz", hash = "sha256:4115c8add6d3fd536c8ee77f0e14a7fd2ebba939fed9b02583a97f80648f9e13", size = 80367, upload-time = "2025-09-23T13:33:47.486Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/85/cd/584a2ceb5532af99dd09e50919e3615ba99aa127e9850eafe5f31ddfdb9a/uvicorn-0.37.0-py3-none-any.whl", hash = "sha256:913b2b88672343739927ce381ff9e2ad62541f9f8289664fa1d1d3803fa2ce6c", size = 67976, upload-time = "2025-09-23T13:33:45.842Z" },
 ]
 
 [[package]]
