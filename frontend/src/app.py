@@ -218,8 +218,21 @@ def load_dashboard(token):
 
     return company_card, suppliers, mappings, dl.Map(children=map_children, bounds=bounds, style={"width": "100%", "height": "100%"})
 
+import uvicorn
+
 
 if __name__ == "__main__":
     host = os.getenv("FASTAPI_HOST", "127.0.0.1")
+    reload_flag = os.getenv("FASTAPI_RELOAD", "True").lower() in ("true", "1", "yes")
+
     logger.info("Starting Food-waste frontend...")
-    app.run(host=host, port=8050)
+    logger.info(f"Host: {host}, Reload: {reload_flag}")
+
+    uvicorn.run(
+        "src.app:app.server",
+        host=host,
+        port=8050,
+        reload=reload_flag,
+    )
+
+    # app.run(host=host, port=8050, use_reloader=reload_flag)
