@@ -2,9 +2,6 @@ FROM python:3.12-slim-trixie
 
 WORKDIR /app
 
-# uv binaries
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
 # System build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
@@ -14,19 +11,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libhdf5-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# nur Projekt-Metadaten zuerst für Caching
+# Copy project metadata first for caching
 COPY pyproject.toml uv.lock ./
 
-# Dependencies installieren
+# Install uv (Python-based) and dependencies
+RUN pip install --upgrade pip \
+    && pip install uv
+
+# Sync dependencies via uv
 RUN uv sync --locked
 
-# Quellcode reinkopieren
+# Copy source code
 COPY src/ src/
 
+# Expose port for FastAPI / Dash
 EXPOSE 8000
 
-# Set environment for Docker
+# Set environment variables
 ENV FASTAPI_HOST=0.0.0.0
 ENV FASTAPI_RELOAD=False
 
+# Command to run the app
 CMD ["uv", "run", "-m", "src.app", "--host", "0.0.0.0", "--port", "8000"]

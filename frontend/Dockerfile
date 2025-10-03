@@ -1,5 +1,7 @@
+# Use official Python slim image
 FROM python:3.12-slim-trixie
 
+# Set working directory
 WORKDIR /app
 
 # System build dependencies
@@ -11,23 +13,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libhdf5-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# uv binaries (optional, nur wenn du uv für andere Backends brauchst)
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# Project metadata for caching
+# Copy project metadata first (for caching)
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies via uv
+# Install uv (Python-based) and dependencies
+RUN pip install --upgrade pip \
+    && pip install uv
+
+# Install project dependencies via uv
 RUN uv sync --locked
 
 # Copy source code
 COPY src/ src/
 
-# Expose Dash port
+# Expose port for Dash / FastAPI
 EXPOSE 8050
 
-# Set environment for Docker
+# Set environment variables
 ENV FASTAPI_HOST=0.0.0.0
 ENV FASTAPI_RELOAD=False
 
-CMD ["uv", "run", "-m", "src.app", "--host", "0.0.0.0", "--port", "8050"]
+# Command to run the app
+ENTRYPOINT [ "uv", "run", "gunicorn", "--bind", "0.0.0.0:8050", "--workers", "3", "src.app:server" ]

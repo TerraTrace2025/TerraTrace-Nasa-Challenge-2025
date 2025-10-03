@@ -1,3 +1,6 @@
+import os
+import logging
+
 import dash
 from dash import html, dcc, Input, Output, State
 import dash_bootstrap_components as dbc
@@ -5,8 +8,13 @@ import dash_leaflet as dl
 from dash import dash_table
 import requests
 from dotenv import load_dotenv
-import os
-import uvicorn
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("food_waste_frontend")
 
 # Load environment variables
 load_dotenv()
@@ -213,11 +221,5 @@ def load_dashboard(token):
 
 if __name__ == "__main__":
     host = os.getenv("FASTAPI_HOST", "127.0.0.1")
-    reload_flag = os.getenv("FASTAPI_RELOAD", "True").lower() in ("true", "1", "yes")
-
-    uvicorn.run(
-        "src.app:app",
-        host=host,
-        port=8050,
-        reload=reload_flag,
-    )
+    logger.info("Starting Food-waste frontend...")
+    app.run(host=host, port=8050)
