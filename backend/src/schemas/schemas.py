@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, date
-from src.db.models import TransportMode, CropType
+from src.db.models import TransportMode, CropType, AlertType
 
 # --- Company ---
 class CompanyBase(BaseModel):
@@ -45,19 +45,16 @@ class SupplierRead(SupplierBase):
         from_attributes = True
 
 
-# --- Supplier Stock ---
-class SupplierStockBase(BaseModel):
-    crop_type: CropType
-    remaining_volume: float
-    price: Optional[float] = None
-    expiry_date: Optional[date] = None
-
-class SupplierStockCreate(SupplierStockBase):
-    supplier_id: int
-
-class SupplierStockRead(SupplierStockBase):
+class SupplierStockRead(BaseModel):
     id: int
-    created_at: datetime
+    supplier_id: int
+    supplier_name: str
+    crop_type: str
+    price: float | None
+    expiry_date: str | None
+    risk_class: AlertType | None
+    message: str | None
+    created_at: str
 
     class Config:
         from_attributes = True
@@ -67,7 +64,7 @@ class SupplierStockRead(SupplierStockBase):
 class CompanyStockMappingBase(BaseModel):
     company_id: int
     stock_id: int
-    agreed_volume: float
+    supplier_id: int     # <-- Add supplier_id here
     transportation_mode: TransportMode
 
 class CompanyStockMappingCreate(CompanyStockMappingBase):
@@ -81,21 +78,6 @@ class CompanyStockMappingRead(CompanyStockMappingBase):
         from_attributes = True
 
 
-# --- Alerts ---
-class AlertBase(BaseModel):
-    supplier_id: int
-    risk_score: int
-    message: str
-
-class AlertCreate(AlertBase):
-    pass
-
-class AlertRead(AlertBase):
-    id: int
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 # --- General Response ---
 class MessageResponse(BaseModel):
