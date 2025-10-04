@@ -11,12 +11,31 @@ router = APIRouter(prefix="/stocks", tags=["stocks"])
 @router.get("/supplier/{supplier_id}", response_model=list[schemas.SupplierStockRead])
 def get_stocks_by_supplier(supplier_id: int, db: Session = Depends(get_db)):
     stocks = db.query(models.SupplierStock).filter(models.SupplierStock.supplier_id == supplier_id).all()
-    return stocks
+    res = []
+
+    for stock in stocks:
+        res.append(
+            schemas.SupplierStockRead(
+                id=stock.id,
+                supplier_id=stock.supplier_id,
+                supplier_name=stock.supplier.name,
+                crop_type=stock.crop_type.value,
+                remaining_volume=stock.remaining_volume,
+                price=stock.price,
+                expiry_date=stock.expiry_date.isoformat() if stock.expiry_date else None,
+                risk_score=stock.risk_score,
+                message=stock.message,
+                created_at=stock.created_at.isoformat()
+            )
+        )
+
+    return res
 
 # GET: Get a single stock by its ID
 @router.get("/{stock_id}", response_model=schemas.SupplierStockRead)
 def get_stock_by_id(stock_id: int, db: Session = Depends(get_db)):
     stock = db.query(models.SupplierStock).filter(models.SupplierStock.id == stock_id).first()
+
     if not stock:
         raise HTTPException(status_code=404, detail=f"Stock with ID {stock_id} not found")
 

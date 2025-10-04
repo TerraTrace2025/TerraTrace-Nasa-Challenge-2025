@@ -16,11 +16,12 @@ class TransportMode(str, enum.Enum):
 
 
 class CropType(str, enum.Enum):
+    rapeseed = "rapeseed"
+    soybean = "soybean"
     wheat = "wheat"
-    rice = "rice"
-    potatoes = "potatoes"
     corn = "corn"
     barley = "barley"
+    sunflowerseed = "sunflowerseed"
 
 # --- Tables ---
 class Company(Base):
@@ -57,7 +58,8 @@ class Supplier(Base):
     # Address info
     country = Column(String, nullable=False)
     city = Column(String, nullable=False)
-    street = Column(String, nullable=True)
+    postcode = Column(String, nullable=True)
+    elevation = Column(Float, nullable=True)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
 

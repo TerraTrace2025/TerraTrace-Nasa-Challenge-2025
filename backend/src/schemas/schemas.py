@@ -58,26 +58,6 @@ class SupplierStockRead(BaseModel):
     created_at: str
 
     class Config:
-        orm_mode = True
-
-
-# --- Supplier Stock ---
-class SupplierStockBase(BaseModel):
-    crop_type: CropType
-    remaining_volume: float
-    price: Optional[float] = None
-    risk_score: int | float
-    message: str
-    expiry_date: Optional[date] = None
-
-class SupplierStockCreate(SupplierStockBase):
-    supplier_id: int
-
-class SupplierStockRead(SupplierStockBase):
-    id: int
-    created_at: datetime
-
-    class Config:
         from_attributes = True
 
 
@@ -85,6 +65,7 @@ class SupplierStockRead(SupplierStockBase):
 class CompanyStockMappingBase(BaseModel):
     company_id: int
     stock_id: int
+    supplier_id: int     # <-- Add supplier_id here
     agreed_volume: float
     transportation_mode: TransportMode
 

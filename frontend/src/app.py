@@ -1,41 +1,19 @@
-"""
-
-TerraTrace / CropPulse — Dash + Leaflet Frontend (Cloud-Backend ready)
-
-- Standardmäßig an das deployte Backend angebunden.
-
-- Robust gegen API-Feldschema (SupplierId vs supplierId, Lat/Lon vs lat/lon, …).
-
-- Optional: lädt Farm-Standorte aus harvest_locations.xlsx (falls vorhanden).
-
-- OSRM-Routing (driving) optional mit Fallback auf Luftlinie.
-
-"""
-
-
-
 import os
 import logging
+import uvicorn
 import json
-
 import math
-
-import datetime as dt
-
-from typing import Any, Dict, List, Optional
-
-
-
 import requests
+import pandas as pd
+import datetime as dt
+from typing import Any, Dict, List, Optional
+from math import radians, sin, cos, asin, sqrt
+from dash.dependencies import ALL, MATCH
 
 import plotly.graph_objects as go
 
-
-
 from dash import Dash, html, dcc, Input, Output, State
-
 import dash_bootstrap_components as dbc
-
 import dash_leaflet as dl
 
 
@@ -46,1037 +24,732 @@ logging.basicConfig(
 )
 logger = logging.getLogger("food_waste_frontend")
 
-
+CARD_STYLE = {"width": "400px", "margin": "auto", "marginTop": "150px", "padding": "20px"}
+CONTAINER_STYLE = {"height": "100vh", "overflow": "hidden", "padding": "0"}
 
 # ----------------------------
-
 # Config
-
 # ----------------------------
-
-API_BASE = os.getenv(
-
-    "API_BASE",
-
-    "https://upmc2drqpn.eu-central-1.awsapprunner.com/api"
-
-)
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000/api")
 
 USE_OSRM = os.getenv("USE_OSRM", "true").lower() == "true"
-
-USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
-
 REFRESH_MS = int(os.getenv("REFRESH_MS", "30000"))  # 30s
-
 DEFAULT_COMPANY_ID = int(os.getenv("COMPANY_ID", "1"))
-
 APP_PORT = int(os.getenv("PORT", "8051"))
 
 
-
 # ----------------------------
-
 # Helpers: HTTP
-
 # ----------------------------
-
-def api_get(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
-
-    """GET helper with graceful fallback to mock_get when USE_MOCK=true or on error."""
-
-    if USE_MOCK:
-
-        return mock_get(path, params)
-
-    url = f"{API_BASE}{path}"
-
+def api_get(path: str, params: Optional[Dict[str, Any]] = None, token: Optional[str] = None) -> Any:
+    """GET helper with Bearer auth if token is provided."""
+    url = f"{API_BASE_URL}{path}"
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
-
-        r = requests.get(url, params=params, timeout=10)
-
+        r = requests.get(url, params=params, headers=headers, timeout=10)
         r.raise_for_status()
-
         return r.json()
-
     except Exception as e:
-
-        return {"error": str(e), "_fallback": mock_get(path, params)}
-
-
-
-def api_post(path: str, payload: Dict[str, Any]) -> Any:
-
-    """POST helper with graceful errors; mock when USE_MOCK=true."""
-
-    if USE_MOCK:
-
-        return {"status": "ok", "_mock": True}
-
-    url = f"{API_BASE}{path}"
-
-    try:
-
-        r = requests.post(url, json=payload, timeout=10)
-
-        r.raise_for_status()
-
-        return r.json()
-
-    except Exception as e:
-
+        logger.warning(f"GET {url} failed: {e}")
         return {"error": str(e)}
 
+def api_post(path: str, payload: Dict[str, Any], token: Optional[str] = None) -> Any:
+    """POST helper with Bearer auth if token is provided."""
+    url = f"{API_BASE_URL}{path}"
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.warning(f"POST {url} failed: {e}")
+        return {"error": str(e)}
+
+def get_suppliers(token: str):
+    return api_get("/suppliers/", token=token)
+
+def get_supplier_stocks(supplier_id: int, token: str):
+    return api_get(f"/stocks/supplier/{supplier_id}", token=token)
+
+def get_stock(stock_id: int, token: str):
+    return api_get(f"/stocks/{stock_id}", token=token)
+
+def get_crop_stocks(crop_type: str, token: str):
+    return api_get(f"/stocks/crop/{crop_type}", token=token)
+
+def get_company_mappings(token: str):
+    return api_get("/mappings/", token=token)
+
+def create_mapping(payload: dict, token: str):
+    return api_post("/mappings/", payload, token=token)
+
+def get_company(token: str):
+    return api_get("/companies", token=token)
 
 
 # ----------------------------
-
-# Mock / Defaults for offline demo
-
-# ----------------------------
-
-RETAILER_LOCATION = (47.3769, 8.5417)  # Zürich
-
-DEFAULT_LOCATIONS_DICT: Dict[str, List[Dict[str, Any]]]={
-
-    "Wheat": [
-
-        {"name": "Farm A (BE)", "lat": 46.98, "lon": 7.45},
-
-        {"name": "Farm B (SO)", "lat": 47.21, "lon": 7.52}
-
-    ],
-
-    "Potatoes": [
-
-        {"name": "Farm C (TG)", "lat": 47.60, "lon": 9.05},
-
-        {"name": "Farm D (AG)", "lat": 47.42, "lon": 8.24}
-
-    ],
-
-}
-
-
-
-MOCK_WAREHOUSES = [
-
-    {"id": 201, "name": "Warehouse Zürich", "lat": 47.39, "lon": 8.51},
-
-    {"id": 202, "name": "Warehouse Bern",   "lat": 46.95, "lon": 7.43},
-
-]
-
-
-
-MOCK_SUPPLIERS = [
-
-    {"SupplierId": 10, "Name": "fenaco",     "Location": "Bern, CH",    "Lat": 46.948, "Lon": 7.447, "TransportModes": "Truck,Train", "CurrentTier": "MED"},
-
-    {"SupplierId": 11, "Name": "Supplier Y", "Location": "Thurgau, CH", "Lat": 47.6,   "Lon": 9.1,   "TransportModes": "Truck",       "CurrentTier": "LOW"},
-
-    {"SupplierId": 12, "Name": "Supplier Z", "Location": "Tyrol, AT",   "Lat": 47.2,   "Lon": 11.3,  "TransportModes": "Truck,Train", "CurrentTier": "HIGH"},
-
-]
-
-MOCK_ALERTS = [
-
-    {"AlertId": 1, "CompanyId": 1, "SupplierId": 12, "CropId": 2, "CreatedAt": "2025-09-29T09:00:00",
-
-     "Severity": "CRIT", "Title": "Potatoes @ Supplier Z high risk",
-
-     "Details": json.dumps({"risk_index": 78, "why": "Heatwave + soil moisture deficit"}), "IsActive": 1},
-
-]
-
-MOCK_RECS = {
-
-    "alternatives": [
-
-        {"supplierId": 11, "coverage": 0.8, "cost_delta_pct": -3.5, "co2_tonne_km": 0.12,
-
-         "risk_index": 24, "reasoning": "Low risk; ample potatoes; near expiry in 9d"},
-
-        {"supplierId": 10, "coverage": 0.4, "cost_delta_pct": +0.5, "co2_tonne_km": 0.08,
-
-         "risk_index": 55, "reasoning": "Medium risk; close distance"}
-
-    ]
-
-}
-
-def mock_get(path: str, _params: Optional[Dict[str, Any]] = None):
-
-    if path.startswith("/suppliers"): return MOCK_SUPPLIERS
-
-    if path.startswith(f"/company/{DEFAULT_COMPANY_ID}/alerts"): return MOCK_ALERTS
-
-    if path.startswith(f"/company/{DEFAULT_COMPANY_ID}/recommendations"): return MOCK_RECS
-
-    return {}
-
-
-
-# ----------------------------
-
 # Normalize API payloads (robust vs. schema variants)
-
 # ----------------------------
-
 def normalize_suppliers(suppliers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-
     norm = []
-
     for s in suppliers or []:
-
         sid = s.get("SupplierId") or s.get("supplierId") or s.get("id") or s.get("supplier_id")
-
         name = s.get("Name") or s.get("name")
-
         lat  = s.get("Lat") or s.get("lat") or s.get("Latitude") or s.get("latitude")
-
         lon  = s.get("Lon") or s.get("lon") or s.get("Longitude") or s.get("longitude")
-
         tier = s.get("CurrentTier") or s.get("currentTier") or s.get("tier")
-
         loc  = s.get("Location") or s.get("location")
-
         modes= s.get("TransportModes") or s.get("transportModes")
 
-        try: lat = float(lat) if lat is not None else None
+        try:
+            lat = float(lat) if lat is not None else None
+        except:
+            lat = None
 
-        except: lat = None
-
-        try: lon = float(lon) if lon is not None else None
-
-        except: lon = None
+        try:
+            lon = float(lon) if lon is not None else None
+        except:
+            lon = None
 
         norm.append({
-
             "SupplierId": sid, "Name": name, "Lat": lat, "Lon": lon,
-
             "CurrentTier": tier, "Location": loc, "TransportModes": modes, "_raw": s
-
         })
-
     return norm
 
-
+def normalize_company(company: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize single company object."""
+    if not isinstance(company, dict) or company.get("error"):
+        return {}
+    return {
+        "CompanyId": company.get("id") or company.get("CompanyId"),
+        "Name": company.get("name") or company.get("Name"),
+        "Lat": company.get("latitude") or company.get("Lat"),
+        "Lon": company.get("longitude") or company.get("Lon"),
+        "City": company.get("city"),
+        "Country": company.get("country"),
+        "_raw": company
+    }
 
 def normalize_alerts(alerts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-
     norm = []
-
     for a in alerts or []:
-
         norm.append({
-
             "AlertId": a.get("AlertId") or a.get("alertId"),
-
             "CompanyId": a.get("CompanyId") or a.get("companyId"),
-
             "SupplierId": a.get("SupplierId") or a.get("supplierId"),
-
             "CropId": a.get("CropId") or a.get("cropId"),
-
             "CreatedAt": a.get("CreatedAt") or a.get("createdAt"),
-
             "Severity": a.get("Severity") or a.get("severity") or "INFO",
-
             "Title": a.get("Title") or a.get("title") or "",
-
             "Details": a.get("Details") or a.get("details") or "",
-
-            "IsActive": a.get("IsActive") or a.get("isActive") or 0,
-
         })
-
     return norm
 
-
-
 def normalize_recs(recs: Dict[str, Any]) -> Dict[str, Any]:
-
     out = {"alternatives": []}
-
     alts = recs.get("alternatives") or recs.get("Alternatives") or []
-
     for r in alts:
-
         out["alternatives"].append({
-
             "supplierId": r.get("supplierId") or r.get("SupplierId") or r.get("id"),
-
             "coverage": r.get("coverage") or r.get("Coverage") or 0,
-
             "cost_delta_pct": r.get("cost_delta_pct") or r.get("costDeltaPct") or 0,
-
             "co2_tonne_km": r.get("co2_tonne_km") or r.get("co2TonneKm") or 0,
-
             "risk_index": r.get("risk_index") or r.get("riskIndex") or None,
-
             "reasoning": r.get("reasoning") or "",
-
         })
-
     return out
 
 
-
 # ----------------------------
-
-# Optional: Farm-Locations aus Excel laden
-
-# ----------------------------
-
-def load_locations_from_excel(path="harvest_locations.xlsx") -> Dict[str, List[Dict[str, Any]]]:
-
-    if not os.path.exists(path):
-
-        return DEFAULT_LOCATIONS_DICT
-
-    try:
-
-        import pandas as pd
-
-        df = pd.read_excel(path)
-
-        # Erwartete Spalten: Crop, Name, Lat, Lon (case-insensitive tolerant)
-
-        cols = {c.lower(): c for c in df.columns}
-
-        crop_col = cols.get("crop") or "Crop"
-
-        name_col = cols.get("name") or "Name"
-
-        lat_col  = cols.get("lat")  or "Lat"
-
-        lon_col  = cols.get("lon")  or "Lon"
-
-        locations: Dict[str, List[Dict[str, Any]]] = {}
-
-        for _, row in df.iterrows():
-
-            crop = str(row[crop_col]).strip()
-
-            if not crop:
-
-                continue
-
-            entry = {
-
-                "name": str(row[name_col]),
-
-                "lat": float(row[lat_col]),
-
-                "lon": float(row[lon_col]),
-
-            }
-
-            locations.setdefault(crop, []).append(entry)
-
-        return locations or DEFAULT_LOCATIONS_DICT
-
-    except Exception:
-
-        return DEFAULT_LOCATIONS_DICT
-
-
-
-LOCATIONS_DICT = load_locations_from_excel()
-
-
-
-# ----------------------------
-
 # UI helpers
-
 # ----------------------------
-
 TIER_COLOR = {"LOW": "#22c55e", "MED": "#f59e0b", "HIGH": "#ef4444", None: "#93c5fd"}
-
 SEVERITY_BADGE = {
-
     "INFO": {"color": "secondary", "text": "INFO"},
-
     "WARN": {"color": "warning", "text": "WARN"},
-
     "CRIT": {"color": "danger", "text": "CRIT"},
-
 }
 
-
-
-def marker_for_supplier(s):
-
-    color = TIER_COLOR.get((s.get("CurrentTier") or "").upper(), "#3b82f6")
+def marker_for_supplier(s, selected_supplier_id=None):
+    is_selected = s.get("SupplierId") == selected_supplier_id
+    color = "#2563eb" if is_selected else TIER_COLOR.get((s.get("CurrentTier") or "").upper(), "#3b82f6")
+    radius = 14 if is_selected else 10
+    weight = 3 if is_selected else 1
 
     return dl.CircleMarker(
-
         center=(s.get("Lat") or 0, s.get("Lon") or 0),
-
-        radius=10,
-
+        radius=radius,
         color=color,
-
+        weight=weight,
+        fill=True,
+        fillOpacity=0.7 if is_selected else 0.5,
         children=[
-
-            dl.Tooltip(f"{s.get('Name') or 'Supplier'} — {s.get('CurrentTier','?')}"),
-
+            dl.Tooltip(f"{s.get('Name') or 'Supplier'} - {s.get('_raw').get('city','')}"),
             dl.Popup([
-
                 html.B(s.get("Name") or "Supplier"), html.Br(),
-
                 html.Div(s.get("Location","")),
-
                 html.Div(f"Tier: {s.get('CurrentTier','?')}")
-
             ])
-
         ]
-
     )
 
-
-
-def build_map(suppliers: List[Dict[str, Any]], extra_layers: Optional[List[Any]] = None):
-
-    markers = [marker_for_supplier(s) for s in suppliers if s.get("Lat") and s.get("Lon")]
-
-    children = [dl.TileLayer(), dl.LayerGroup(markers, id="supplier-markers")]
-
-    if extra_layers: children.extend(extra_layers)
-
-    return dl.Map(center=(47.0, 8.0), zoom=6, children=children, style={"height": "65vh", "width": "100%"})
-
-
-
-def alert_card(a: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
-
-    sev = SEVERITY_BADGE.get((a.get("Severity") or "WARN"), SEVERITY_BADGE["WARN"])
-
-    sup = suppliers_index.get(a.get("SupplierId")) or {"Name": f"Supplier {a.get('SupplierId')}"}
-
-    details = a.get("Details")
-
-    try:
-
-        det = json.loads(details) if isinstance(details, str) else details
-
-    except Exception:
-
-        det = {"risk_index": "?", "why": details}
-
-    return dbc.Card([
-
-        dbc.CardBody([
-
-            html.Div([dbc.Badge(sev["text"], color=sev["color"], className="me-2"), html.Span(a.get("Title",""), className="fw-bold")]),
-
-            html.Small(f"Supplier: {sup.get('Name')} • CropId: {a.get('CropId')} • {a.get('CreatedAt')}", className="text-muted d-block mt-1"),
-
-            html.Div(det.get("why",""), className="mt-2"),
-
-            html.Div(f"Risk Index: {det.get('risk_index','?')}", className="mt-1"),
-
-        ])
-
-    ], className="mb-2")
-
-
-
-def recommendations_panel(recs: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
-
-    items = []
-
-    for r in recs.get("alternatives", []):
-
-        sup = suppliers_index.get(r.get("supplierId")) or {"Name": f"Supplier {r.get('supplierId')}"}
-
-        items.append(dbc.ListGroupItem([
-
-            html.Div([html.B(sup.get("Name")), html.Span(f" — coverage {int(100*(r.get('coverage') or 0))}%")]),
-
-            html.Div(f"Risk {r.get('risk_index','?')} | ΔCost {r.get('cost_delta_pct',0)}% | CO₂ {r.get('co2_tonne_km',0)} t·km"),
-
-            html.Div(r.get("reasoning",""), className="text-muted")
-
-        ]))
-
-    if not items: items = [dbc.ListGroupItem("No recommendations yet.")]
-
-    return dbc.ListGroup(items)
-
-
-
-def risk_timeline_placeholder():
-
-    fig = go.Figure()
-
-    x = [dt.date.today() + dt.timedelta(days=i) for i in range(14)]
-
-    y = [min(100, max(0, 40 + 20*math.sin(i/3))) for i in range(14)]
-
-    fig.add_trace(go.Scatter(x=x, y=y, mode="lines+markers", name="Risk Index"))
-
-    fig.update_layout(margin=dict(l=10,r=10,t=10,b=10), height=220, yaxis_title="Risk (0-100)")
-
-    return dcc.Graph(figure=fig, config={"displayModeBar": False})
-
-
+def marker_for_company(c):
+    if not c or not c.get("Lat") or not c.get("Lon"):
+        return None
+    # Use a simple default marker (no external icon dependency)
+    return dl.Marker(
+        position=(c["Lat"], c["Lon"]),
+        children=[
+            dl.Tooltip(f"{c.get('Name','Company')} (HQ)"),
+            dl.Popup([
+                html.B(c.get("Name","Company")), html.Br(),
+                html.Div(f"{c.get('City','')}, {c.get('Country','')}")
+            ])
+        ],
+    )
 
 # ----------------------------
-
-# Transport params + Routing helpers
-
+# Routing helpers
 # ----------------------------
-
-COST_PER_KM_BY_MODE = {"Truck": 1.2, "Train": 0.6}
-
-CO2_PER_TKM_BY_MODE = {"Truck": 0.12, "Train": 0.04}  # t CO2 per tonne-km
-
-SPEED_KMPH_BY_MODE = {"Truck": 60.0, "Train": 80.0}
-
-
-
-from math import radians, sin, cos, asin, sqrt
-
 def haversine_km(lat1, lon1, lat2, lon2):
-
     R = 6371.0
-
-    dlat = radians(lat2-lat1)
-
-    dlon = radians(lon2-lon1)
-
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
     a = sin(dlat/2)**2 + cos(radians(lat1))*cos(radians(lat2))*sin(dlon/2)**2
-
-    return 2*R*asin(sqrt(a))
-
-
+    return 2 * R * asin(sqrt(a))
 
 def _decode_polyline5(polyline: str) -> List[tuple]:
-
     coords=[]; index=0; lat=0; lon=0; length=len(polyline)
-
     while index<length:
-
         shift=0; result=0
-
         while True:
-
             b=ord(polyline[index])-63; index+=1
-
-            result |= (b&0x1f) << shift; shift += 5
-
-            if b<0x20: break
-
+            result |= (b & 0x1f) << shift; shift += 5
+            if b < 0x20: break
         dlat = ~(result>>1) if (result & 1) else (result>>1)
-
         lat += dlat
 
         shift=0; result=0
-
         while True:
-
             b=ord(polyline[index])-63; index+=1
-
-            result |= (b&0x1f) << shift; shift += 5
-
-            if b<0x20: break
-
+            result |= (b & 0x1f) << shift; shift += 5
+            if b < 0x20: break
         dlon = ~(result>>1) if (result & 1) else (result>>1)
-
         lon += dlon
-
         coords.append((lat/1e5, lon/1e5))
-
     return coords
 
-
-
 def osrm_route(a: tuple, b: tuple) -> Optional[Dict[str, Any]]:
-
-    if not USE_OSRM: return None
-
+    if not USE_OSRM:
+        return None
     url = f"https://router.project-osrm.org/route/v1/driving/{a[1]},{a[0]};{b[1]},{b[0]}"
-
     params = {"overview":"full","geometries":"polyline","alternatives":"false"}
-
     try:
-
         r = requests.get(url, params=params, timeout=8)
-
         r.raise_for_status()
-
         data = r.json()
-
         routes = data.get("routes") or []
-
-        if not routes: return None
-
+        if not routes:
+            return None
         route = routes[0]
-
         coords = _decode_polyline5(route.get("geometry",""))
-
-        return {
-
-            "coords": coords,
-
-            "distance_km": (route.get("distance") or 0)/1000.0,
-
-            "duration_h":  (route.get("duration") or 0)/3600.0
-
-        }
-
+        return {"coords": coords}
     except Exception:
-
         return None
 
+def build_supplier_routes(company: Dict[str, Any], suppliers: List[Dict[str, Any]]) -> List[Any]:
+    """Erzeuge Polyline-Layer von jedem Supplier zur Company-Location."""
+    if not company or not company.get("Lat") or not company.get("Lon"):
+        return []
 
-
-def build_route_layers(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[str, Any]], route_polylines: Optional[List[List[tuple]]]=None):
-
-    markers=[]
-
-    if farm:
-
-        markers.append(dl.Marker(position=(farm["lat"], farm["lon"]), children=[dl.Tooltip(f"Farm: {farm['name']}")]))
-
-    if warehouse:
-
-        markers.append(dl.Marker(position=(warehouse["lat"], warehouse["lon"]), children=[dl.Tooltip(f"Warehouse: {warehouse['name']}")]))
-
-    markers.append(dl.Marker(position=RETAILER_LOCATION, children=[dl.Tooltip("Retailer (Zürich)")]))
-
-
-
-    legs=[]
-
-    if farm and warehouse: legs.append([(farm["lat"], farm["lon"]), (warehouse["lat"], warehouse["lon"])])
-
-    if warehouse:           legs.append([(warehouse["lat"], warehouse["lon"]), RETAILER_LOCATION])
-
-    elif farm:              legs.append([(farm["lat"], farm["lon"]), RETAILER_LOCATION])
-
-
-
-    poly_src = route_polylines if route_polylines else legs
-
-    polylines = [dl.Polyline(positions=leg, weight=4, opacity=0.8) for leg in poly_src]
-
-    return [dl.LayerGroup(markers + polylines, id="route-layer")]
-
-
-
-def compute_kpis(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[str, Any]], mode: str="Truck", volume_kg: float=1000.0):
-
-    legs=[]; labels=[]
-
-    if farm and warehouse:
-
-        legs.append(((farm["lat"], farm["lon"]), (warehouse["lat"], warehouse["lon"])))
-
-        labels.append("Farm → Warehouse")
-
-    if warehouse:
-
-        legs.append(((warehouse["lat"], warehouse["lon"]), RETAILER_LOCATION))
-
-        labels.append("Warehouse → Retailer")
-
-    elif farm:
-
-        legs.append(((farm["lat"], farm["lon"]), RETAILER_LOCATION))
-
-        labels.append("Farm → Retailer")
-
-    if not legs:
-
-        return {"total":{"distance_km":0.0,"time_h":0.0,"budget_chf":0.0,"co2_t":0.0},"legs":[]}
-
-
-
-    cost_per_km = COST_PER_KM_BY_MODE.get(mode, 1.2)
-
-    co2_per_tkm = CO2_PER_TKM_BY_MODE.get(mode, 0.12)
-
-    speed       = SPEED_KMPH_BY_MODE.get(mode, 60.0)
-
-
-
-    total_dist=0.0; total_time=0.0; legs_out=[]
-
-    for idx, (a,b) in enumerate(legs):
-
-        routed = osrm_route(a,b)
-
-        if routed:
-
-            dist_km = routed["distance_km"]; dur_h = routed["duration_h"]
-
+    target = (company["Lat"], company["Lon"])
+    polylines = []
+    for s in suppliers:
+        if not s.get("Lat") or not s.get("Lon"):
+            continue
+        src = (s["Lat"], s["Lon"])
+        routed = osrm_route(src, target)
+        if routed and routed.get("coords"):
+            line = dl.Polyline(positions=routed["coords"], color="#2563eb", weight=3, opacity=0.8)
         else:
+            line = dl.Polyline(positions=[src, target], color="#2563eb", weight=3, dashArray="5,5")
+        polylines.append(line)
+    return polylines
 
-            dist_km = haversine_km(a[0],a[1],b[0],b[1]); dur_h = dist_km/speed if speed>0 else 0.0
+def normalize_stocks(stocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    for s in (stocks or []):
+        out.append({
+            "id": s.get("id") or s.get("stock_id") or s.get("StockId"),
+            "crop_type": s.get("crop_type") or s.get("CropType") or s.get("crop"),
+            "available": s.get("available_volume") or s.get("available") or s.get("quantity"),
+            "unit": s.get("unit") or s.get("Unit") or "t",
+            "price": s.get("price") or s.get("price_per_unit") or s.get("Price"),
+            "expiry": s.get("expiry_date") or s.get("expiry") or s.get("best_before"),
+            "risk": s.get("risk_score") or s.get("risk") or None,
+            "_raw": s,
+        })
+    return out
 
-        total_dist += dist_km; total_time += dur_h
+def stock_item_card(s: Dict[str, Any]) -> dbc.ListGroupItem:
+    top = f"{(s.get('crop_type') or 'Unknown').title()} — {s.get('available','?')} {s.get('unit','')}"
+    meta = []
+    if s.get("price") is not None:
+        meta.append(f"Price: {s['price']}")
+    if s.get("risk") is not None:
+        meta.append(f"Risk: {s['risk']}")
+    if s.get("expiry"):
+        meta.append(f"Expiry: {s['expiry']}")
+    sub = " | ".join(meta) if meta else "—"
+    return dbc.ListGroupItem(
+        [html.Div(top, className="fw-semibold"), html.Small(sub, className="text-muted d-block")]
+    )
 
-        legs_out.append({"label": labels[idx], "distance_km": dist_km, "time_h": dur_h})
+
+def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None):
+    # Base markers
+    marker_children = []
+    comp_marker = marker_for_company(company)
+    if comp_marker:
+        marker_children.append(comp_marker)
+    marker_children.extend([marker_for_supplier(s, selected_supplier_id) for s in suppliers if s.get("Lat") and s.get("Lon")])
+
+    # Routen + Alerts as before...
+    route_layers = build_supplier_routes(company, suppliers)
+
+    # Alert overlays (CircleMarkers) at supplier if SupplierId present, else at company
+    alert_overlays = []
+    suppliers_index = {s.get("SupplierId"): s for s in suppliers}
+    for a in alerts:
+        sev = (a.get("Severity") or "INFO").upper()
+        color = {"INFO": "#3b82f6", "WARN": "#f59e0b", "CRIT": "#ef4444"}.get(sev, "#64748b")
+        sup = suppliers_index.get(a.get("SupplierId"))
+
+        if sup and sup.get("Lat") and sup.get("Lon"):
+            lat, lon = sup["Lat"], sup["Lon"]
+        else:
+            # Fallback: place at company HQ if no supplier available
+            if company and company.get("Lat") and company.get("Lon"):
+                lat, lon = company["Lat"], company["Lon"]
+            else:
+                # As a last resort, skip if no coordinates at all
+                continue
+
+        alert_overlays.append(
+            dl.CircleMarker(
+                center=(lat, lon),
+                radius=14,
+                color=color,
+                fill=True,
+                fillOpacity=0.45,
+            )
+        )
+
+    children = [
+        dl.TileLayer(),
+        dl.LayerGroup(alert_overlays, id="alert-overlays"),
+        dl.LayerGroup(marker_children, id="entity-markers"),
+        dl.LayerGroup(route_layers, id="route-layers"),
+    ]
+    return dl.Map(center=(47.0, 8.0), zoom=6, children=children, style={"height": "65vh", "width": "100%"})
 
 
+def alert_card(a: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
+    details = a.get("Details")
 
-    budget = total_dist * cost_per_km
+    try:
+        det = json.loads(details) if isinstance(details, str) else (details or {})
+    except Exception:
+        det = {"risk_index": "?", "why": details}
 
-    co2    = (volume_kg/1000.0) * total_dist * co2_per_tkm
+    # Ensure stable keys for card
+    why_text = det.get("why") or det.get("message") or a.get("Title") or ""
+    risk_index = det.get("risk_index") if det.get("risk_index") is not None else det.get("risk_score")
 
-    return {"total":{"distance_km":total_dist,"time_h":total_time,"budget_chf":budget,"co2_t":co2},"legs":legs_out}
+    sev = SEVERITY_BADGE.get((a.get("Severity") or "WARN").upper(), SEVERITY_BADGE["WARN"])
+    sup = suppliers_index.get(a.get("SupplierId")) or {"Name": f"Supplier {a.get('SupplierId')}"}
+
+    return dbc.Card(
+        dbc.CardBody([
+            # Header with severity + title
+            html.Div([
+                dbc.Badge(sev["text"], color=sev["color"], className="me-2"),
+                html.Span(a.get("Title", ""), className="fw-bold text-dark fs-5"),
+            ], className="d-flex align-items-center mb-2"),
+
+            # Metadata line
+            html.Small(
+                f"Supplier: {sup.get('Name').capitalize()}\n",
+                className="text-muted d-block"
+            ),
+
+            html.Small(
+                f"Crop: {a.get('CropId').capitalize()}\n",
+                className="text-muted d-block"
+            ),
+
+            html.Small(
+                f"Agreed Volume: {a.get('Details').get('agreed_volume', '?')} t\n",
+                className="text-muted d-block"
+            ),
+
+            # Why text / description
+            html.Div(why_text, className="mt-3 text-body"),
+
+            # Risk index
+            html.Div(
+                f"Risk Index: {risk_index if risk_index is not None else '?'}",
+                className="mt-3 fw-semibold text-danger"
+            ),
+        ]),
+        className="mb-3 shadow-sm rounded-3 border-0"
+    )
+
+
+def recommendations_panel(recs: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
+    items = []
+    for r in recs.get("alternatives", []):
+        sup = suppliers_index.get(r.get("supplierId")) or {"Name": f"Supplier {r.get('supplierId')}"}
+        items.append(dbc.ListGroupItem([
+            html.Div([html.B(sup.get("Name")), html.Span(f" — coverage {int(100*(r.get('coverage') or 0))}%")]),
+            html.Div(f"Risk {r.get('risk_index','?')} | ΔCost {r.get('cost_delta_pct',0)}% | CO₂ {r.get('co2_tonne_km',0)} t·km"),
+            html.Div(r.get("reasoning",""), className="text-muted")
+        ]))
+    if not items:
+        items = [dbc.ListGroupItem("No recommendations yet.")]
+    return dbc.ListGroup(items)
+
+def risk_timeline_placeholder():
+    fig = go.Figure()
+    x = [dt.date.today() + dt.timedelta(days=i) for i in range(14)]
+    y = [min(100, max(0, 40 + 20*math.sin(i/3))) for i in range(14)]
+    fig.add_trace(go.Scatter(x=x, y=y, mode="lines+markers", name="Risk Index"))
+    fig.update_layout(margin=dict(l=10,r=10,t=10,b=10), height=220, yaxis_title="Risk (0-100)")
+    return dcc.Graph(figure=fig, config={"displayModeBar": False})
+
+
+# ----------------------------
+# Transport params + Routing helpers
+# ----------------------------
+COST_PER_KM_BY_MODE = {"Truck": 1.2, "Train": 0.6}
+CO2_PER_TKM_BY_MODE = {"Truck": 0.12, "Train": 0.04}  # t CO2 per tonne-km
+SPEED_KMPH_BY_MODE = {"Truck": 60.0, "Train": 80.0}
+
+
+# ----------------------------
+# Alert building from API data
+# ----------------------------
+def severity_from_risk(risk_score: Optional[float]) -> str:
+    if risk_score is None:
+        return "INFO"
+    try:
+        r = float(risk_score)
+    except Exception:
+        return "INFO"
+    if r >= 3:
+        return "CRIT"
+    if r >= 1:
+        return "WARN"
+    return "INFO"
+
+def build_alerts_from_api(company_id: Optional[int], token: str) -> List[Dict[str, Any]]:
+    alerts: List[Dict[str, Any]] = []
+
+    mappings = get_company_mappings(token)
+    if not isinstance(mappings, list):
+        return alerts
+
+    filtered = [m for m in mappings if (company_id is None or m.get("company_id") == company_id)]
+    for m in filtered:
+        stock_id = m.get("stock_id")
+        if stock_id is None:
+            continue
+        stock = get_stock(stock_id, token)
+        if not isinstance(stock, dict) or stock.get("error"):
+            continue
+
+        crop_type = stock.get("crop_type")
+        risk_score = stock.get("risk_score")
+        message = stock.get("message") or f"Stock #{stock_id} update"
+        expiry_date = stock.get("expiry_date")
+        supplier_id = stock.get("supplier_id")
+
+        severity = severity_from_risk(risk_score)
+        created_at = stock.get("created_at") or dt.datetime.utcnow().isoformat()
+
+        alerts.append({
+            "AlertId": f"stock-{stock_id}",
+            "CompanyId": company_id,
+            "SupplierId": supplier_id,
+            "CropId": crop_type,
+            "CreatedAt": created_at,
+            "Severity": severity,
+            "Title": f"{crop_type.title() if crop_type else 'Crop'} alert",
+            "Details": {
+                "risk_score": risk_score,
+                "why": message,
+                "expiry_date": expiry_date,
+                "mapping_id": m.get("id"),
+                "transportation_mode": m.get("transportation_mode"),
+                "agreed_volume": m.get("agreed_volume"),
+            },
+        })
+    return alerts
 
 
 
 # ----------------------------
-
 # Dash App
-
 # ----------------------------
-
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
 server = app.server
-
-app.title = "TerraTrace — Climate-Smart Supply Chains"
-
+app.title = "TerraTrace - Climate-Smart Supply Chains"
 
 sidebar = dbc.Card([
-
     dbc.CardBody([
-
-        html.H5("Filters"),
-
-        dbc.Label("Company"),
-
-        dcc.Dropdown(id="company-dd", options=[{"label":"LANDI","value":1}], value=DEFAULT_COMPANY_ID, clearable=False),
-
-
-
-        dbc.Label("Overlay"),
-
-        dcc.Checklist(
-
-            id="overlay-checks",
-
-            options=[{"label":"Temperature","value":"TEMP"},{"label":"Precipitation","value":"PRECIP"},{"label":"Soil Moisture","value":"SOIL"},{"label":"NDVI","value":"NDVI"}],
-
-            value=["TEMP"], inputStyle={"marginRight":"6px"}
-
-        ),
-
+        html.H5("Available Suppliers"),
+        html.Div(id="suppliers-list", style={"maxHeight": "35vh", "overflowY": "auto"}),
         html.Hr(),
-
-        html.H6("Route Planner"),
-
-        dbc.Label("Crop"),
-
-        dcc.Dropdown(id="route-crop-dd", options=[{"label":c,"value":c} for c in sorted(LOCATIONS_DICT.keys())], placeholder="Select crop…"),
-
-        dbc.Label("Farm"),
-
-        dcc.Dropdown(id="route-farm-dd", placeholder="Select farm…"),
-
-        dbc.Label("Warehouse"),
-
-        dcc.Dropdown(id="route-warehouse-dd", options=[{"label":w["name"],"value":w["id"]} for w in MOCK_WAREHOUSES], placeholder="Select warehouse…"),
-
-        dbc.Label("Volume (kg)"),
-
-        dbc.Input(id="route-volume", type="number", value=1000, min=1),
-
-        dbc.Label("Mode"),
-
-        dcc.Dropdown(id="route-mode", options=[{"label":"Truck","value":"Truck"},{"label":"Train","value":"Train"}], value="Truck", clearable=False),
-
-
-
-        html.Small(f"Retailer fixed: Zürich {RETAILER_LOCATION}", className="text-muted d-block mb-2"),
-
-        html.Div(id="route-msg", className="mt-1 text-info"),
-
-        html.Hr(),
-
-        html.H6("Add Supply Chain"),
-
-        dbc.Input(id="inp-product", placeholder="Crop (e.g., Potatoes)", type="text"),
-
-        dbc.Input(id="inp-region", placeholder="Region (e.g., Thurgau, CH)", type="text", className="mt-1"),
-
-        dbc.Input(id="inp-volume", placeholder="Planned Volume (kg)", type="number", className="mt-1"),
-
-        dbc.Button("Add", id="btn-add", color="primary", className="mt-2", n_clicks=0),
-
-        html.Div(id="add-msg", className="mt-1 text-success"),
-
+        html.H5("Available Stock"),
+        html.Div(id="stocks-list", style={"maxHeight": "35vh", "overflowY": "auto"})
     ])
-
 ], className="h-100")
 
 
 
-content = html.Div([
+content = dbc.Row([
+            dbc.Col(html.Div(id="map-container"), md=8),
+            dbc.Col(
+                dbc.Card([
+                    dbc.CardHeader("Alerts"),
+                    dbc.CardBody(
+                        html.Div(
+                            id="alerts-list",
+                            style={
+                                "maxHeight": "65vh",   # same as map height
+                                "overflowY": "auto"   # enable vertical scrolling
+                            }
+                        )
+                    )
+                ]),
+                md=4
+            ),
+        ], className="mt-2"), dcc.Interval(id="tick", interval=REFRESH_MS, n_intervals=0)
 
-    dbc.Row([
 
-        dbc.Col(html.Div(id="map-container"), md=8),
+app.layout = html.Div([
+    dcc.Store(id="token-store"),
+    dcc.Store(id="selected-supplier-id"),
 
-        dbc.Col(dbc.Card([dbc.CardHeader("Alerts"), dbc.CardBody(html.Div(id="alerts-list"))]), md=4),
 
-    ], className="mt-2"),
+    # Login Card
+    dbc.Card([
+        html.H3("Login", className="text-center mb-4"),
+        dbc.Label("Company Name"),
+        dbc.Input(id="company-name", type="text", placeholder="Enter company name", className="mb-3"),
+        dbc.Label("Password"),
+        dbc.Input(id="password", type="password", placeholder="Enter password", className="mb-3"),
+        dbc.Button("Login", id="login-button", color="primary", className="d-block w-100"),
+        html.Div(id="login-feedback", className="mt-3 text-center text-danger")
+    ], style=CARD_STYLE, id="login-card"),
 
-    dbc.Row([
-
-        dbc.Col(dbc.Card([dbc.CardHeader("Recommendations"), dbc.CardBody(html.Div(id="recs-panel"))]), md=6),
-
-        dbc.Col(dbc.Card([dbc.CardHeader("Route KPIs"), dbc.CardBody(html.Div(id="kpi-panel"))]), md=6),
-
-    ], className="mt-2"),
-
-    dcc.Interval(id="tick", interval=REFRESH_MS, n_intervals=0)
-
+    # Dashboard container (hidden until login)
+    dbc.Container([
+        dbc.Row([
+            dbc.Col(html.H3("TerraTrace — Climate-Smart Supply Chains"), md=8),
+        ], className="mt-2"),
+        dbc.Row([
+            dbc.Col(sidebar, md=3, style={"height": "100%"}),
+            dbc.Col(content, md=9, style={"height": "100%"}),
+        ], style={"height": "90%"}, className="mt-2"),
+    ], id="dashboard-container", style={"display": "none", **CONTAINER_STYLE})
 ])
 
 
-
-app.layout = dbc.Container(fluid=True, children=[
-
-    dbc.Row([
-
-        dbc.Col(html.H3("TerraTrace — Climate-Smart Supply Chains"), md=8),
-
-        dbc.Col(html.Div([html.Small(f"API: {API_BASE} | Mock: {USE_MOCK}")], className="text-end"), md=4)
-
-    ], className="mt-2"),
-
-    dbc.Row([dbc.Col(sidebar, md=3), dbc.Col(content, md=9)], className="mt-2")
-
-])
-
-
-
-# ----------------------------
-
-# Callbacks
-
-# ----------------------------
-
 @app.callback(
-
-    Output("map-container", "children"),
-
-    Output("alerts-list", "children"),
-
-    Output("recs-panel", "children"),
-
-    Output("route-farm-dd", "options"),
-
-    Output("route-msg", "children"),
-
-    Output("kpi-panel", "children"),
-
-    Input("tick", "n_intervals"),
-
-    Input("company-dd", "value"),
-
-    Input("route-crop-dd", "value"),
-
-    Input("route-farm-dd", "value"),
-
-    Input("route-warehouse-dd", "value"),
-
-    Input("route-volume", "value"),
-
-    Input("route-mode", "value"),
-
-)
-
-def refresh(_n, company_id, crop_value, farm_value, warehouse_value, route_volume, route_mode):
-
-    # --- Suppliers
-
-    suppliers = api_get("/suppliers")
-
-    if isinstance(suppliers, dict) and "_fallback" in suppliers:
-
-        suppliers = suppliers["_fallback"]
-
-    suppliers = normalize_suppliers(suppliers)
-
-
-
-    # --- Route selections
-
-    farm = None; farm_options=[]
-
-    if crop_value:
-
-        farms = LOCATIONS_DICT.get(crop_value, [])
-
-        farm_options = [{"label": f["name"], "value": f["name"]} for f in farms]
-
-        if farm_value:
-
-            for f in farms:
-
-                if f["name"] == farm_value:
-
-                    farm = f; break
-
-
-
-    warehouse = None
-
-    if warehouse_value:
-
-        for w in MOCK_WAREHOUSES:
-
-            if w["id"] == warehouse_value:
-
-                warehouse = w; break
-
-
-
-    # --- Build route polylines via OSRM (fallback)
-
-    poly_routes=[]
-
-    if farm or warehouse:
-
-        legs=[]
-
-        if farm and warehouse: legs.append(((farm["lat"], farm["lon"]), (warehouse["lat"], warehouse["lon"])))
-
-        if warehouse:           legs.append(((warehouse["lat"], warehouse["lon"]), RETAILER_LOCATION))
-
-        elif farm:              legs.append(((farm["lat"], farm["lon"]), RETAILER_LOCATION))
-
-        for (a,b) in legs:
-
-            routed = osrm_route(a,b)
-
-            if routed and routed.get("coords"): poly_routes.append(routed["coords"])
-
-            else:                               poly_routes.append([a,b])
-
-
-
-    route_layers = build_route_layers(farm, warehouse, route_polylines=poly_routes if poly_routes else None)
-
-    map_el = build_map(suppliers, extra_layers=route_layers)
-
-
-
-    # --- Alerts & Recommendations
-
-    alerts = api_get(f"/company/{company_id}/alerts")
-
-    if isinstance(alerts, dict) and "_fallback" in alerts:
-
-        alerts = alerts["_fallback"]
-
-    alerts = normalize_alerts(alerts)
-
-
-
-    sup_index = {s["SupplierId"]: s for s in suppliers if s.get("SupplierId") is not None}
-
-    alerts_cards = [alert_card(a, sup_index) for a in alerts] or [html.Div("No active alerts.")]
-
-
-
-    recs = api_get(f"/company/{company_id}/recommendations/latest")
-
-    if isinstance(recs, dict) and "_fallback" in recs:
-
-        recs = recs["_fallback"]
-
-    recs_el = recommendations_panel(normalize_recs(recs), sup_index)
-
-
-
-    # --- KPI & Validation
-
-    route_msg = "Bitte wähle eine Farm aus." if (crop_value and not farm) else ""
-
-    kpi_children=[]
-
-    if farm or warehouse:
-
-        k = compute_kpis(farm, warehouse, mode=(route_mode or "Truck"), volume_kg=(route_volume or 1000))
-
-        total = k["total"]
-
-        rows = [html.Tr([html.Th("Total"), html.Td(f"{total['distance_km']:.1f} km"),
-
-                         html.Td(f"{total['time_h']:.1f} h"), html.Td(f"CHF {total['budget_chf']:.0f}"),
-
-                         html.Td(f"{total['co2_t']:.2f} t")])]
-
-        for leg in k["legs"]:
-
-            rows.append(html.Tr([html.Td(leg["label"]), html.Td(f"{leg['distance_km']:.1f} km"),
-
-                                 html.Td(f"{leg['time_h']:.1f} h"), html.Td("—"), html.Td("—")]))
-
-        kpi_children = [dbc.Table([html.Thead(html.Tr([html.Th("Leg"), html.Th("Dist"), html.Th("Time"), html.Th("Budget"), html.Th("CO₂")])),
-
-                                   html.Tbody(rows)], bordered=True, hover=True, size="sm")]
-
-
-
-    return map_el, alerts_cards, recs_el, farm_options, route_msg, kpi_children
-
-
-
-@app.callback(
-
-    Output("add-msg", "children"),
-
-    Input("btn-add", "n_clicks"),
-
-    State("company-dd", "value"),
-
-    State("inp-product", "value"),
-
-    State("inp-region", "value"),
-
-    State("inp-volume", "value"),
-
+    Output("selected-supplier-id", "data"),
+    Input({"type": "supplier-item", "index": ALL}, "n_clicks"),
+    State({"type": "supplier-item", "index": ALL}, "id"),
+    State("selected-supplier-id", "data"),
     prevent_initial_call=True
-
 )
+def select_supplier(n_clicks_list, ids, current_selected):
+    if not n_clicks_list:
+        return current_selected
 
-def add_supply_chain(_n_clicks, company_id, crop, region, volume):
+    # find the last clicked supplier (highest click count)
+    clicked = [
+        (n, sid["index"]) for n, sid in zip(n_clicks_list, ids) if n
+    ]
+    if not clicked:
+        return current_selected
 
-    if not crop or not region or not volume:
+    # take the one with max n_clicks (most recent click)
+    _, supplier_id = max(clicked, key=lambda x: x[0])
 
-        return "Please fill all fields."
+    # toggle if same as before
+    if current_selected == supplier_id:
+        return None
+    return supplier_id
 
-    payload = {"supplierId": 10, "cropId": 2, "plannedVolumeKg": float(volume), "preferredTransport": "Truck"}
+# ----------------------------------
+# Login Callback
+# ----------------------------------
+@app.callback(
+    Output("token-store", "data"),
+    Output("login-feedback", "children"),
+    Output("login-card", "style"),
+    Output("dashboard-container", "style"),
+    Input("login-button", "n_clicks"),
+    State("company-name", "value"),
+    State("password", "value"),
+    prevent_initial_call=True
+)
+def login(n_clicks, company_name, password):
+    """Handles user login via API and shows dashboard after success."""
+    if not company_name or not password:
+        return None, "Please enter both fields", CARD_STYLE, {"display": "none", **CONTAINER_STYLE}
 
-    resp = api_post(f"/company/{company_id}/mapping", payload)
+    try:
+        response = requests.post(f"{API_BASE_URL}/auth/login", json={
+            "company_name": company_name,
+            "password": password
+        })
+        if response.status_code != 200:
+            logger.warning(f"Login failed for {company_name}: {response.text}")
+            return None, "Invalid credentials", CARD_STYLE, {"display": "none", **CONTAINER_STYLE}
 
-    if isinstance(resp, dict) and resp.get("error"):
+        token = response.json().get("access_token")
+        logger.info(f"Login successful for company '{company_name}'")
 
-        return f"Error: {resp['error']}"
+        # Hide login card, show dashboard
+        return token, "", {"display": "none"}, {"display": "block", **CONTAINER_STYLE}
 
-    return "Supply chain mapping added (demo)."
+    except Exception as e:
+        logger.exception("Login error")
+        return None, f"Error: {str(e)}", CARD_STYLE, {"display": "none", **CONTAINER_STYLE}
+
+
+@app.callback(
+    Output("suppliers-list", "children"),
+    Input("token-store", "data"),
+    prevent_initial_call=True
+)
+def load_suppliers(token):
+    if not token:
+        return dbc.ListGroup([dbc.ListGroupItem("Please login.")])
+    suppliers_raw = get_suppliers(token)
+    suppliers = normalize_suppliers(suppliers_raw if isinstance(suppliers_raw, list) else [])
+    supplier_items = [
+        dbc.ListGroupItem(
+            f"{s.get('Name','Unknown')} — Tier {s.get('CurrentTier','?')}",
+            id={"type": "supplier-item", "index": s.get("SupplierId")},
+            action=True
+        ) for s in suppliers
+    ]
+    return dbc.ListGroup(supplier_items, flush=True)
+
+
+
+# ----------------------------------
+# Stocks list: refresh when a supplier is selected
+# ----------------------------------
+@app.callback(
+    Output("stocks-list", "children"),
+    Input("selected-supplier-id", "data"),
+    Input("token-store", "data"),
+    prevent_initial_call=True
+)
+def show_supplier_stocks(selected_supplier_id, token):
+    if not token:
+        return dbc.Alert("Please login to see stocks.", color="warning", className="mb-0")
+    if not selected_supplier_id:
+        return dbc.ListGroup([dbc.ListGroupItem("Select a supplier to see available stock.")], flush=True)
+
+    data = get_supplier_stocks(selected_supplier_id, token)
+
+    # handle API errors
+    if not isinstance(data, list):
+        if isinstance(data, dict) and data.get("error"):
+            return dbc.Alert(f"Could not load stocks: {data['error']}", color="danger", className="mb-0")
+        # unexpected shape
+        return dbc.Alert("No stock data available for this supplier.", color="secondary", className="mb-0")
+
+    stocks = normalize_stocks(data)
+    if not stocks:
+        return dbc.ListGroup([dbc.ListGroupItem("No available stock for this supplier.")], flush=True)
+
+    items = [stock_item_card(s) for s in stocks]
+    return dbc.ListGroup(items, flush=True)
+
+
+# ----------------------------------
+# Live refresh: map + alerts
+# ----------------------------------
+@app.callback(
+    Output("map-container", "children"),
+    Output("alerts-list", "children"),
+    Input("tick", "n_intervals"),
+    Input("token-store", "data"),
+    Input("selected-supplier-id", "data"),
+    prevent_initial_call=True
+)
+def refresh_dashboard(n, token, selected_supplier_id):
+    # if no token yet
+    if not token:
+        return (
+            html.Div("Please login first."),
+            [html.Div("No alerts (not logged in).")]
+        )
+
+    # run the API calls once (either immediately after login or every tick)
+    company_raw = get_company(token)
+    company = normalize_company(company_raw)
+    company_id = company.get("CompanyId") or DEFAULT_COMPANY_ID
+
+    suppliers_raw = get_suppliers(token)
+    suppliers = normalize_suppliers(suppliers_raw if isinstance(suppliers_raw, list) else [])
+
+    # 🔑 get mappings and filter suppliers
+    mappings = get_company_mappings(token)
+    supplier_ids_in_use = {
+        m.get("supplier_id") for m in mappings if m.get("company_id") == company_id
+    }
+    suppliers_in_use = [s for s in suppliers if s.get("SupplierId") in supplier_ids_in_use]
+
+    alerts_raw = build_alerts_from_api(company_id, token)
+    alerts = normalize_alerts(alerts_raw)
+
+    suppliers_index = {s.get("SupplierId"): s for s in suppliers_in_use}
+    alert_cards = (
+        [alert_card(a, suppliers_index) for a in alerts]
+        if alerts
+        else [html.Div("No alerts at this time.", className="text-muted")]
+    )
+
+    map_obj = build_map(company, suppliers_in_use, alerts, selected_supplier_id)
+
+    # highlight selected supplier if any
+    if selected_supplier_id:
+        sel = next((s for s in suppliers if s.get("SupplierId") == selected_supplier_id), None)
+        if sel and sel.get("Lat") and sel.get("Lon"):
+            map_obj.children.append(
+                dl.CircleMarker(
+                    center=(sel["Lat"], sel["Lon"]),
+                    radius=8,
+                    color='#3b82f6',
+                )
+            )
+
+    return map_obj, alert_cards
 
 
 
 # ----------------------------
-
 # Main
-
 # ----------------------------
-
-# ---------- Dev Server ----------
 if __name__ == "__main__":
-    import uvicorn
     host = os.getenv("FASTAPI_HOST", "127.0.0.1")
     reload_flag = os.getenv("FASTAPI_RELOAD", "True").lower() in ("true", "1", "yes")
 
@@ -1085,6 +758,5 @@ if __name__ == "__main__":
 
     if reload_flag:
         app.run(host=host, port=8050, debug=True)
-
     else:
         uvicorn.run("src.app:app.server", host=host, port=8050, reload=reload_flag)
