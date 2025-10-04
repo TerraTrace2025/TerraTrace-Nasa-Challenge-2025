@@ -134,29 +134,32 @@ def normalize_company(company: Dict[str, Any]) -> Dict[str, Any]:
 def normalize_alerts(alerts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     norm = []
     for a in alerts or []:
+        sev = a.get("Severity") or a.get("severity")
+        if sev:
+            sev = sev.upper()
+        else:
+            sev = "STABLE"  # Default fallback
+
         norm.append({
             "AlertId": a.get("AlertId") or a.get("alertId"),
             "CompanyId": a.get("CompanyId") or a.get("companyId"),
             "SupplierId": a.get("SupplierId") or a.get("supplierId"),
             "CropId": a.get("CropId") or a.get("cropId"),
             "CreatedAt": a.get("CreatedAt") or a.get("createdAt"),
-            "Severity": a.get("Severity") or a.get("severity") or "INFO",
+            "Severity": sev,
             "Title": a.get("Title") or a.get("title") or "",
-            "Details": a.get("Details") or a.get("details") or "",
+            "Details": a.get("Details") or a.get("details") or {},
         })
     return norm
 
 def normalize_recs(recs: Dict[str, Any]) -> Dict[str, Any]:
-    out = {"alternatives": []}
-    alts = recs.get("alternatives") or recs.get("Alternatives") or []
-    for r in alts:
-        out["alternatives"].append({
-            "supplierId": r.get("supplierId") or r.get("SupplierId") or r.get("id"),
-            "coverage": r.get("coverage") or r.get("Coverage") or 0,
-            "cost_delta_pct": r.get("cost_delta_pct") or r.get("costDeltaPct") or 0,
-            "co2_tonne_km": r.get("co2_tonne_km") or r.get("co2TonneKm") or 0,
-            "risk_index": r.get("risk_index") or r.get("riskIndex") or None,
-            "reasoning": r.get("reasoning") or "",
+    out = {"recommendations": []}
+    raw_recs = recs.get("recommendations") or recs.get("Recommendations") or []
+
+    for r in raw_recs:
+        out["recommendations"].append({
+            "supplier": r.get("supplier") or r.get("Supplier") or "",
+            "reasoning": r.get("reasoning") or r.get("Reasoning") or "",
         })
     return out
 
@@ -164,11 +167,26 @@ def normalize_recs(recs: Dict[str, Any]) -> Dict[str, Any]:
 # ----------------------------
 # UI helpers
 # ----------------------------
-TIER_COLOR = {"LOW": "#22c55e", "MED": "#f59e0b", "HIGH": "#ef4444", None: "#93c5fd"}
+TIER_COLOR = {
+    "SURPLUS": "#22c55e",   # green
+    "STABLE": "#6C757D",    # grey
+    "RISK": "#f59e0b",      # amber
+    "HIGHRISK": "#ef4444",  # red
+    None: "#93c5fd",        # fallback
+}
+
 SEVERITY_BADGE = {
-    "INFO": {"color": "secondary", "text": "INFO"},
-    "WARN": {"color": "warning", "text": "WARN"},
-    "CRIT": {"color": "danger", "text": "CRIT"},
+    "SURPLUS": {"color": "success", "text": "Surplus"},
+    "STABLE": {"color": "secondary", "text": "Stable"},
+    "RISK": {"color": "warning", "text": "Risk"},
+    "CRITICAL": {"color": "danger", "text": "Critical"},
+}
+
+SEVERITY_ORDER = {
+    "CRITICAL": 3,
+    "RISK": 2,
+    "STABLE": 1,
+    "SURPLUS": 0,
 }
 
 def marker_for_supplier(s, selected_supplier_id=None):
@@ -287,7 +305,7 @@ def normalize_stocks(stocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "unit": s.get("unit") or s.get("Unit") or "t",
             "price": s.get("price") or s.get("price_per_unit") or s.get("Price"),
             "expiry": s.get("expiry_date") or s.get("expiry") or s.get("best_before"),
-            "risk": s.get("risk_score") or s.get("risk") or None,
+            "risk": s.get("risk_class") or s.get("risk") or None,
             "_raw": s,
         })
     return out
@@ -322,8 +340,9 @@ def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: 
     alert_overlays = []
     suppliers_index = {s.get("SupplierId"): s for s in suppliers}
     for a in alerts:
-        sev = (a.get("Severity") or "INFO").upper()
-        color = {"INFO": "#3b82f6", "WARN": "#f59e0b", "CRIT": "#ef4444"}.get(sev, "#64748b")
+        sev = (a.get("Severity") or "").upper()
+        color = TIER_COLOR.get(sev, "#93c5fd")
+
         sup = suppliers_index.get(a.get("SupplierId"))
 
         if sup and sup.get("Lat") and sup.get("Lon"):
@@ -354,72 +373,81 @@ def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: 
     ]
     return dl.Map(center=(47.0, 8.0), zoom=6, children=children, style={"height": "89vh", "width": "100%"})
 
-
-def alert_card(a: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
-    details = a.get("Details")
-
-    try:
-        det = json.loads(details) if isinstance(details, str) else (details or {})
-    except Exception:
-        det = {"risk_index": "?", "why": details}
-
-    # Ensure stable keys for card
-    why_text = det.get("why") or det.get("message") or a.get("Title") or ""
-    risk_index = det.get("risk_index") if det.get("risk_index") is not None else det.get("risk_score")
-
-    sev = SEVERITY_BADGE.get((a.get("Severity") or "WARN").upper(), SEVERITY_BADGE["WARN"])
-    sup = suppliers_index.get(a.get("SupplierId")) or {"Name": f"Supplier {a.get('SupplierId')}"}
-
-    return dbc.Card(
-        dbc.CardBody([
-            # Header with severity + title
-            html.Div([
-                dbc.Badge(sev["text"], color=sev["color"], className="me-2"),
-                html.Span(a.get("Title", ""), className="fw-bold text-dark fs-5"),
-            ], className="d-flex align-items-center mb-2"),
-
-            # Metadata line
-            html.Small(
-                f"Supplier: {sup.get('Name').capitalize()}\n",
-                className="text-muted d-block"
-            ),
-
-            html.Small(
-                f"Crop: {a.get('CropId').capitalize()}\n",
-                className="text-muted d-block"
-            ),
-
-            html.Small(
-                f"Agreed Volume: {a.get('Details').get('agreed_volume', '?')} t\n",
-                className="text-muted d-block"
-            ),
-
-            # Why text / description
-            html.Div(why_text, className="mt-3 text-body"),
-
-            # Risk index
-            html.Div(
-                f"Risk Index: {risk_index if risk_index is not None else '?'}",
-                className="mt-3 fw-semibold text-danger"
-            ),
-        ]),
-        className="mb-3 shadow-sm rounded-3 border-0",
-        style={"position": "relative", "zIndex": 10}  # <-- über Hintergrund
-    )
-
-
 def recommendations_panel(recs: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
     items = []
-    for r in recs.get("alternatives", []):
-        sup = suppliers_index.get(r.get("supplierId")) or {"Name": f"Supplier {r.get('supplierId')}"}
-        items.append(dbc.ListGroupItem([
-            html.Div([html.B(sup.get("Name")), html.Span(f" — coverage {int(100*(r.get('coverage') or 0))}%")]),
-            html.Div(f"Risk {r.get('risk_index','?')} | ΔCost {r.get('cost_delta_pct',0)}% | CO₂ {r.get('co2_tonne_km',0)} t·km"),
-            html.Div(r.get("reasoning",""), className="text-muted")
-        ]))
+    for r in recs.get("alternatives", []) or recs.get("recommendations", []):
+        supplier_name = r.get("name") or r.get("supplier")
+        reasoning = r.get("reasoning", "")
+
+        sup = suppliers_index.get(r.get("supplierId")) or {"Name": supplier_name}
+        display_name = sup.get("Name") or supplier_name or "Unknown Supplier"
+
+        items.append(
+            dbc.Card(
+                dbc.CardBody([
+                    html.H6(display_name, className="fw-bold mb-1"),
+                    html.Small(reasoning, className="text-muted d-block"),
+                ]),
+                className="mb-2 shadow-sm border-0"
+            )
+        )
+
     if not items:
-        items = [dbc.ListGroupItem("No recommendations yet.")]
-    return dbc.ListGroup(items)
+        items = [dbc.Alert("No recommendations available.", color="secondary", className="mb-0")]
+
+    return html.Div(items)
+
+
+def alert_card(a: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
+    det = a.get("Details") or {}
+
+    sev_key = (a.get("Severity") or "STABLE").upper()
+    sev = SEVERITY_BADGE.get(sev_key, SEVERITY_BADGE["STABLE"])
+    sup = suppliers_index.get(a.get("SupplierId")) or {"Name": f"Supplier {a.get('SupplierId')}"}
+
+    # Why/Message handling
+    raw_msg = det.get("why") or det.get("message") or a.get("Title") or ""
+    recs = None
+    why_node: Any = None
+
+    if raw_msg is not None:
+        try:
+            msg_json = json.loads(raw_msg) if isinstance(raw_msg, str) else raw_msg
+            if isinstance(msg_json, dict) and msg_json.get("recommendations"):
+                recs = normalize_recs(msg_json)
+
+            else:
+                # Falls kein recs-Objekt drin → zeige Raw JSON formatiert
+                why_node = html.Pre(json.dumps(msg_json, indent=2), className="small bg-light p-2 rounded")
+        except Exception:
+            why_node = html.Div(raw_msg, className="mt-3 text-body")
+
+    body_children = [
+        html.Div([
+            dbc.Badge(sev["text"], color=sev["color"], className="me-2"),
+            html.Span(a.get("Title", ""), className="fw-bold text-dark fs-5"),
+        ], className="d-flex align-items-center mb-2"),
+
+        html.Small(f"Supplier: {sup.get('Name','?').capitalize()}", className="text-muted d-block"),
+        html.Small(f"Crop: {a.get('CropId','?').capitalize()}", className="text-muted d-block"),
+    ]
+
+    # show why/message if present
+    if why_node:
+        body_children.append(why_node)
+
+    # pretty recommendations panel
+    if recs:
+        body_children.append(html.Hr())
+        body_children.append(html.H6("Recommendations", className="mt-2"))
+        body_children.append(recommendations_panel(recs, suppliers_index))
+
+    return dbc.Card(
+        dbc.CardBody(body_children),
+        className="mb-3 shadow-sm rounded-3 border-0",
+        style={"position": "relative", "zIndex": 10}
+    )
+
 
 def risk_timeline_placeholder():
     fig = go.Figure()
@@ -441,18 +469,6 @@ SPEED_KMPH_BY_MODE = {"Truck": 60.0, "Train": 80.0}
 # ----------------------------
 # Alert building from API data
 # ----------------------------
-def severity_from_risk(risk_score: Optional[float]) -> str:
-    if risk_score is None:
-        return "INFO"
-    try:
-        r = float(risk_score)
-    except Exception:
-        return "INFO"
-    if r >= 3:
-        return "CRIT"
-    if r >= 1:
-        return "WARN"
-    return "INFO"
 
 def build_alerts_from_api(company_id: Optional[int], token: str) -> List[Dict[str, Any]]:
     alerts: List[Dict[str, Any]] = []
@@ -471,12 +487,11 @@ def build_alerts_from_api(company_id: Optional[int], token: str) -> List[Dict[st
             continue
 
         crop_type = stock.get("crop_type")
-        risk_score = stock.get("risk_score")
-        message = stock.get("message") or f"Stock #{stock_id} update"
+        risk_class = stock.get("risk_class")
+        message = stock.get("message")
         expiry_date = stock.get("expiry_date")
         supplier_id = stock.get("supplier_id")
 
-        severity = severity_from_risk(risk_score)
         created_at = stock.get("created_at") or dt.datetime.utcnow().isoformat()
 
         alerts.append({
@@ -485,15 +500,14 @@ def build_alerts_from_api(company_id: Optional[int], token: str) -> List[Dict[st
             "SupplierId": supplier_id,
             "CropId": crop_type,
             "CreatedAt": created_at,
-            "Severity": severity,
+            "Severity": risk_class,
             "Title": f"{crop_type.title() if crop_type else 'Crop'} alert",
             "Details": {
-                "risk_score": risk_score,
+                "risk_class": risk_class,
                 "why": message,
                 "expiry_date": expiry_date,
                 "mapping_id": m.get("id"),
                 "transportation_mode": m.get("transportation_mode"),
-                "agreed_volume": m.get("agreed_volume"),
             },
         })
     return alerts
@@ -736,6 +750,8 @@ def refresh_dashboard(n, token, selected_supplier_id):
 
     alerts_raw = build_alerts_from_api(company_id, token)
     alerts = normalize_alerts(alerts_raw)
+
+    alerts.sort(key=lambda a: SEVERITY_ORDER.get((a.get("Severity") or "").upper(), 0), reverse=True)
 
     suppliers_index = {s.get("SupplierId"): s for s in suppliers_in_use}
     alert_cards = (

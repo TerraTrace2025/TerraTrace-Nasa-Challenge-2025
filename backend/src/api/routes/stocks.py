@@ -20,10 +20,9 @@ def get_stocks_by_supplier(supplier_id: int, db: Session = Depends(get_db)):
                 supplier_id=stock.supplier_id,
                 supplier_name=stock.supplier.name,
                 crop_type=stock.crop_type.value,
-                remaining_volume=stock.remaining_volume,
                 price=stock.price,
                 expiry_date=stock.expiry_date.isoformat() if stock.expiry_date else None,
-                risk_score=stock.risk_score,
+                risk_class=stock.risk_class,
                 message=stock.message,
                 created_at=stock.created_at.isoformat()
             )
@@ -44,10 +43,9 @@ def get_stock_by_id(stock_id: int, db: Session = Depends(get_db)):
         supplier_id=stock.supplier_id,
         supplier_name=stock.supplier.name,
         crop_type=stock.crop_type.value,
-        remaining_volume=stock.remaining_volume,
         price=stock.price,
         expiry_date=stock.expiry_date.isoformat() if stock.expiry_date else None,
-        risk_score=stock.risk_score,
+        risk_class=stock.risk_class,
         message=stock.message,
         created_at=stock.created_at.isoformat()
     )
@@ -71,10 +69,9 @@ def get_stocks_by_crop(crop_type: models.CropType, db: Session = Depends(get_db)
             supplier_id=s.supplier_id,
             supplier_name=s.supplier.name,
             crop_type=s.crop_type.value,
-            remaining_volume=s.remaining_volume,
             price=s.price,
             expiry_date=s.expiry_date.isoformat() if s.expiry_date else None,
-            risk_score=s.risk_score,
+            risk_class=s.risk_class,
             message=s.message,
             created_at=s.created_at.isoformat()
         )

@@ -3,6 +3,21 @@ from src.db.session import SessionLocal, engine
 from src.db import models, base
 from datetime import date, timedelta
 import random
+import glob
+import pandas as pd
+import os
+import re
+
+def classify_alert(relative_diff: float) -> models.AlertType:
+    """Map relative difference to an AlertType"""
+    if relative_diff < -0.1:       # much worse than requested
+        return models.AlertType.critical
+    elif -0.1 <= relative_diff < 0:  # slightly below requested
+        return models.AlertType.risk
+    elif 0 <= relative_diff < 0.1:   # about as expected
+        return models.AlertType.stable
+    else:                           # yield higher than requested
+        return models.AlertType.surplus
 
 def populate():
     # --- Create tables ---
@@ -39,7 +54,43 @@ def populate():
             db.add(user)
         db.commit()
 
+
+        # Path to data folder
+        data_folder = "src/scripts/data"
+
+        # Prepare dictionary
+        standort_dict = {}
+
+        # Loop through all csv files in scripts/data
+        for file in glob.glob(os.path.join(data_folder, "*_estimated_requested.csv")):
+            # Extract crop type from filename
+            crop_name = os.path.basename(file).replace("_estimated_requested.csv", "")
+            crop_type = models.CropType(crop_name)
+
+            # Read file
+            df = pd.read_csv(file)
+
+            # Ensure required columns exist
+            if {"Standort", "estimated_yield", "requested_yield"}.issubset(df.columns):
+                for _, row in df.iterrows():
+                    standort_raw = row["Standort"]
+                    # 🔹 Remove leading numbers + optional whitespace
+                    standort = re.sub(r"^\s*\d+\s*", "", standort_raw)
+                    price = row.get("price")
+                    expiry_date = row.get("expiry_date")
+                    diff = row.get("diff")
+                    recommendations = row.get("recommendations")
+
+                    # Insert into dictionary
+                    if standort not in standort_dict:
+                        standort_dict[standort] = []
+
+                    standort_dict[standort].append(
+                        (crop_type.value, diff, price, expiry_date, recommendations)
+                    )
+
         # --- Suppliers ---
+        # real data
         suppliers_data = [
             {
                 "name": "Sonnenhof Wohlen",
@@ -74,7 +125,7 @@ def populate():
             {
                 "name": "Alpenkorn Hof Schaan",
                 "country": "Liechtenstein",
-                "city": "Schaan",
+                "city": "Schaan (FL)",
                 "postcode": "9494",
                 "latitude": 47.1667928,
                 "longitude": 9.5112894,
@@ -474,18 +525,29 @@ def populate():
 
         # --- Supplier Stocks ---
         for supplier, crop_types in suppliers:
-            for crop_type in crop_types:
+            if supplier.city not in standort_dict:
+                continue  # skip if no data for this supplier city
+
+            # iterate over stored crop info for this standort
+            for stored_crop_type, diff, price, expiry_date, recommendations in standort_dict[supplier.city]:
+                # only insert if this crop type is in the allowed supplier crop_types
+                if stored_crop_type not in [ct.value for ct in crop_types]:
+                    continue
+
+                alert_class = classify_alert(diff)
+
                 stock = models.SupplierStock(
                     supplier_id=supplier.id,
-                    crop_type=crop_type,
-                    remaining_volume=random.randint(50, 500),
-                    price=round(random.uniform(10, 100), 2),
-                    expiry_date=date.today() + timedelta(days=random.randint(5, 30)),
-                    risk_score=random.randint(1, 100),  # random risk score
-                    message=f"Dummy alert for {supplier.name} - {crop_type.value}"
+                    crop_type=stored_crop_type,
+                    price=price,
+                    expiry_date=date.fromisoformat(expiry_date) if isinstance(expiry_date, str) else expiry_date,
+                    risk_class=alert_class,
+                    message=recommendations
                 )
                 db.add(stock)
+
         db.commit()
+
 
         # --- Company-to-Stock Mappings ---
         all_stocks = db.query(models.SupplierStock).all()
@@ -494,14 +556,10 @@ def populate():
                 break
             sampled_stocks = random.sample(all_stocks, k=min(5, len(all_stocks)))
             for stock in sampled_stocks:
-                # agreed_volume: min 1, max remaining_volume
-                max_agree = max(1, int(stock.remaining_volume))
-                agreed_volume = random.randint(1, max_agree)
                 mapping = models.CompanyStockMapping(
                     company_id=company.id,
                     supplier_id=stock.supplier_id,
                     stock_id=stock.id,
-                    agreed_volume=agreed_volume,
                     transportation_mode=random.choice(list(models.TransportMode)),
                 )
                 db.add(mapping)

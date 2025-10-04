@@ -23,6 +23,14 @@ class CropType(str, enum.Enum):
     barley = "barley"
     sunflowerseed = "sunflowerseed"
 
+
+class AlertType(str, enum.Enum):
+    critical = "Critical"
+    risk = "Risk"
+    stable = "Stable"
+    surplus = "Surplus"
+
+
 # --- Tables ---
 class Company(Base):
     __tablename__ = "companies"
@@ -76,11 +84,10 @@ class SupplierStock(Base):
     id = Column(Integer, primary_key=True, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
     crop_type = Column(Enum(CropType), nullable=False)
-    remaining_volume = Column(Float, nullable=False)
 
     price = Column(Float, nullable=True)
     expiry_date = Column(Date, nullable=True)
-    risk_score = Column(Integer, nullable=True)
+    risk_class = Column(Enum(AlertType), nullable=True)
     message = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=now)
@@ -100,7 +107,6 @@ class CompanyStockMapping(Base):
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
     stock_id = Column(Integer, ForeignKey("supplier_stocks.id", ondelete="CASCADE"), nullable=False)
-    agreed_volume = Column(Float, nullable=False)
     created_at = Column(DateTime, default=now)
     transportation_mode = Column(Enum(TransportMode), nullable=False)
 
