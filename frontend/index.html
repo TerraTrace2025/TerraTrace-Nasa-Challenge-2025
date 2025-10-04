@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangGraph Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-robot"></i>
+                    <span>LangGraph</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Analytics</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <div class="top-bar-left">
+                    <h1>AI Assistant Dashboard</h1>
+                    <p>Powered by LangGraph & FastAPI</p>
+                </div>
+                <div class="top-bar-right">
+                    <div class="status-indicator">
+                        <div class="status-dot online"></div>
+                        <span>Online</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard Content -->
+            <div class="dashboard-content">
+                <!-- Dashboard View -->
+                <div id="dashboard-view">
+                    <!-- Stats Cards -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="message-count">0</h3>
+                                <p>Messages Today</p>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3 id="avg-response">~2s</h3>
+                                <p>Avg Response</p>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-brain"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>GPT-3.5</h3>
+                                <p>Model Active</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Welcome Section -->
+                    <div class="welcome-section">
+                        <h2>Welcome to your AI Assistant</h2>
+                        <p>Start a conversation using the chat panel on the right. Your AI assistant is ready to help with
+                            any questions or tasks.</p>
+                    </div>
+                </div>
+
+                <!-- Analytics View (hidden by default) -->
+                <div id="analytics-view" style="display: none;">
+                    <h2 style="margin-bottom: 2rem; color: #2d3748;">Analytics Dashboard</h2>
+                    
+                    <!-- Analytics KPI Cards -->
+                    <div class="analytics-kpi-grid">
+                        <div class="analytics-kpi-card">
+                            <h3 id="kpi-conversations">2,847</h3>
+                            <p>Total Conversations</p>
+                            <span class="kpi-change positive">↗ +12.5%</span>
+                        </div>
+                        <div class="analytics-kpi-card">
+                            <h3 id="kpi-response-time">1.8s</h3>
+                            <p>Avg Response Time</p>
+                            <span class="kpi-change positive">↘ -0.3s</span>
+                        </div>
+                        <div class="analytics-kpi-card">
+                            <h3 id="kpi-satisfaction">4.7/5</h3>
+                            <p>User Satisfaction</p>
+                            <span class="kpi-change positive">↗ +0.2</span>
+                        </div>
+                        <div class="analytics-kpi-card">
+                            <h3 id="kpi-success-rate">94.2%</h3>
+                            <p>Success Rate</p>
+                            <span class="kpi-change positive">↗ +1.1%</span>
+                        </div>
+                    </div>
+
+                    <!-- Charts -->
+                    <div class="analytics-charts-grid">
+                        <div class="chart-card">
+                            <h3>Daily Chat Volume</h3>
+                            <canvas id="chat-volume-chart" width="400" height="200"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Response Time Trend</h3>
+                            <canvas id="response-time-chart" width="400" height="200"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Topic Distribution</h3>
+                            <canvas id="topics-chart" width="400" height="200"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Hourly Usage Pattern</h3>
+                            <canvas id="hourly-usage-chart" width="400" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Chat Panel -->
+        <aside class="chat-panel">
+            <div class="chat-header">
+                <h3>
+                    <i class="fas fa-robot"></i>
+                    AI Assistant
+                </h3>
+                <button id="clear-chat" class="clear-btn" title="Clear conversation">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+
+            <div id="chat-messages" class="chat-messages">
+                <div class="message bot-message">
+                    <div class="message-avatar">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="message-content">
+                        Hello! I'm your AI assistant powered by LangGraph. How can I help you today?
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <div class="input-group">
+                    <input type="text" id="message-input" placeholder="Ask me anything..." maxlength="500">
+                    <button id="send-button">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                <div class="status" id="status"></div>
+            </div>
+        </aside>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
