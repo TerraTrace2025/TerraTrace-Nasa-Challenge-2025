@@ -327,6 +327,8 @@ dependencies = [
     { name = "dotenv" },
     { name = "gunicorn" },
     { name = "ipyleaflet" },
+    { name = "logger" },
+    { name = "plotly" },
     { name = "requests" },
     { name = "uvicorn" },
 ]
@@ -341,6 +343,8 @@ requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "gunicorn", specifier = ">=23.0.0" },
     { name = "ipyleaflet", specifier = ">=0.20.0" },
+    { name = "logger", specifier = ">=1.4" },
+    { name = "plotly", specifier = ">=6.3.0" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "uvicorn", specifier = ">=0.37.0" },
 ]
@@ -529,6 +533,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/b9/7d/160595ca88ee87ac6
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/6a/ca128561b22b60bd5a0c4ea26649e68c8556b82bc70a0c396eebc977fe86/jupyterlab_widgets-3.0.15-py3-none-any.whl", hash = "sha256:d59023d7d7ef71400d51e6fee9a88867f6e65e10a4201605d2d7f3e8f012a31c", size = 216571, upload-time = "2025-05-05T12:32:29.534Z" },
 ]
+
+[[package]]
+name = "logger"
+version = "1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/73/2f/b0d28eaa1e2c1cf64129f8da3fe701888d152677fec708cd0f13e8309e1e/logger-1.4.tar.gz", hash = "sha256:4ecac57133c6376fa215f0fe6b4dc4d60e4d1ad8be005cab4e8a702df682f8b3", size = 1187, upload-time = "2013-10-22T16:49:01.48Z" }
 
 [[package]]
 name = "markupsafe"
