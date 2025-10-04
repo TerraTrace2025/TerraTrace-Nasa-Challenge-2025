@@ -45,11 +45,29 @@ class SupplierRead(SupplierBase):
         from_attributes = True
 
 
+class SupplierStockRead(BaseModel):
+    id: int
+    supplier_id: int
+    supplier_name: str
+    crop_type: str
+    remaining_volume: float
+    price: float | None
+    expiry_date: str | None
+    risk_score: int | None
+    message: str | None
+    created_at: str
+
+    class Config:
+        orm_mode = True
+
+
 # --- Supplier Stock ---
 class SupplierStockBase(BaseModel):
     crop_type: CropType
     remaining_volume: float
     price: Optional[float] = None
+    risk_score: int | float
+    message: str
     expiry_date: Optional[date] = None
 
 class SupplierStockCreate(SupplierStockBase):

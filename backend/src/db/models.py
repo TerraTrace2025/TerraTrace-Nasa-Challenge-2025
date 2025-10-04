@@ -65,8 +65,9 @@ class Supplier(Base):
     stocks = relationship(
         "SupplierStock", back_populates="supplier", cascade="all, delete-orphan"
     )
-    alerts = relationship("Alert", back_populates="supplier", cascade="all, delete-orphan")
-
+    stock_mappings = relationship(
+        "CompanyStockMapping", back_populates="supplier", cascade="all, delete-orphan"
+    )
 
 class SupplierStock(Base):
     __tablename__ = "supplier_stocks"
@@ -74,8 +75,12 @@ class SupplierStock(Base):
     supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
     crop_type = Column(Enum(CropType), nullable=False)
     remaining_volume = Column(Float, nullable=False)
+
     price = Column(Float, nullable=True)
     expiry_date = Column(Date, nullable=True)
+    risk_score = Column(Integer, nullable=True)
+    message = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=now)
 
     supplier = relationship("Supplier", back_populates="stocks")
@@ -88,27 +93,18 @@ class SupplierStock(Base):
 
 class CompanyStockMapping(Base):
     __tablename__ = "company_stock_mappings"
+
     id = Column(Integer, primary_key=True, index=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
     stock_id = Column(Integer, ForeignKey("supplier_stocks.id", ondelete="CASCADE"), nullable=False)
     agreed_volume = Column(Float, nullable=False)
     created_at = Column(DateTime, default=now)
     transportation_mode = Column(Enum(TransportMode), nullable=False)
 
     company = relationship("Company", back_populates="stock_mappings")
+    supplier = relationship("Supplier", back_populates="stock_mappings")
     stock = relationship("SupplierStock", back_populates="company_mappings")
-
-
-class Alert(Base):
-    __tablename__ = "alerts"
-    id = Column(Integer, primary_key=True, index=True)
-    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
-    risk_score = Column(Integer, nullable=False)
-    message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=now)
-
-    supplier = relationship("Supplier", back_populates="alerts")
-
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
