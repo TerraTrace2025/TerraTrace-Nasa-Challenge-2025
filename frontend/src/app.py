@@ -12,10 +12,10 @@ TerraTrace / CropPulse — Dash + Leaflet Frontend (Cloud-Backend ready)
 
 """
 
- 
+
 
 import os
-
+import logging
 import json
 
 import math
@@ -24,13 +24,13 @@ import datetime as dt
 
 from typing import Any, Dict, List, Optional
 
- 
+
 
 import requests
 
 import plotly.graph_objects as go
 
- 
+
 
 from dash import Dash, html, dcc, Input, Output, State
 
@@ -38,7 +38,15 @@ import dash_bootstrap_components as dbc
 
 import dash_leaflet as dl
 
- 
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("food_waste_frontend")
+
+
 
 # ----------------------------
 
@@ -64,7 +72,7 @@ DEFAULT_COMPANY_ID = int(os.getenv("COMPANY_ID", "1"))
 
 APP_PORT = int(os.getenv("PORT", "8051"))
 
- 
+
 
 # ----------------------------
 
@@ -94,7 +102,7 @@ def api_get(path: str, params: Optional[Dict[str, Any]] = None) -> Any:
 
         return {"error": str(e), "_fallback": mock_get(path, params)}
 
- 
+
 
 def api_post(path: str, payload: Dict[str, Any]) -> Any:
 
@@ -118,7 +126,7 @@ def api_post(path: str, payload: Dict[str, Any]) -> Any:
 
         return {"error": str(e)}
 
- 
+
 
 # ----------------------------
 
@@ -148,7 +156,7 @@ DEFAULT_LOCATIONS_DICT: Dict[str, List[Dict[str, Any]]]={
 
 }
 
- 
+
 
 MOCK_WAREHOUSES = [
 
@@ -158,7 +166,7 @@ MOCK_WAREHOUSES = [
 
 ]
 
- 
+
 
 MOCK_SUPPLIERS = [
 
@@ -206,7 +214,7 @@ def mock_get(path: str, _params: Optional[Dict[str, Any]] = None):
 
     return {}
 
- 
+
 
 # ----------------------------
 
@@ -252,7 +260,7 @@ def normalize_suppliers(suppliers: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 
     return norm
 
- 
+
 
 def normalize_alerts(alerts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
@@ -284,7 +292,7 @@ def normalize_alerts(alerts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     return norm
 
- 
+
 
 def normalize_recs(recs: Dict[str, Any]) -> Dict[str, Any]:
 
@@ -312,7 +320,7 @@ def normalize_recs(recs: Dict[str, Any]) -> Dict[str, Any]:
 
     return out
 
- 
+
 
 # ----------------------------
 
@@ -372,11 +380,11 @@ def load_locations_from_excel(path="harvest_locations.xlsx") -> Dict[str, List[D
 
         return DEFAULT_LOCATIONS_DICT
 
- 
+
 
 LOCATIONS_DICT = load_locations_from_excel()
 
- 
+
 
 # ----------------------------
 
@@ -396,7 +404,7 @@ SEVERITY_BADGE = {
 
 }
 
- 
+
 
 def marker_for_supplier(s):
 
@@ -428,7 +436,7 @@ def marker_for_supplier(s):
 
     )
 
- 
+
 
 def build_map(suppliers: List[Dict[str, Any]], extra_layers: Optional[List[Any]] = None):
 
@@ -440,7 +448,7 @@ def build_map(suppliers: List[Dict[str, Any]], extra_layers: Optional[List[Any]]
 
     return dl.Map(center=(47.0, 8.0), zoom=6, children=children, style={"height": "65vh", "width": "100%"})
 
- 
+
 
 def alert_card(a: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
 
@@ -474,7 +482,7 @@ def alert_card(a: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
 
     ], className="mb-2")
 
- 
+
 
 def recommendations_panel(recs: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
 
@@ -498,7 +506,7 @@ def recommendations_panel(recs: Dict[str, Any], suppliers_index: Dict[Any, Dict[
 
     return dbc.ListGroup(items)
 
- 
+
 
 def risk_timeline_placeholder():
 
@@ -514,7 +522,7 @@ def risk_timeline_placeholder():
 
     return dcc.Graph(figure=fig, config={"displayModeBar": False})
 
- 
+
 
 # ----------------------------
 
@@ -528,7 +536,7 @@ CO2_PER_TKM_BY_MODE = {"Truck": 0.12, "Train": 0.04}  # t CO2 per tonne-km
 
 SPEED_KMPH_BY_MODE = {"Truck": 60.0, "Train": 80.0}
 
- 
+
 
 from math import radians, sin, cos, asin, sqrt
 
@@ -544,7 +552,7 @@ def haversine_km(lat1, lon1, lat2, lon2):
 
     return 2*R*asin(sqrt(a))
 
- 
+
 
 def _decode_polyline5(polyline: str) -> List[tuple]:
 
@@ -584,7 +592,7 @@ def _decode_polyline5(polyline: str) -> List[tuple]:
 
     return coords
 
- 
+
 
 def osrm_route(a: tuple, b: tuple) -> Optional[Dict[str, Any]]:
 
@@ -624,7 +632,7 @@ def osrm_route(a: tuple, b: tuple) -> Optional[Dict[str, Any]]:
 
         return None
 
- 
+
 
 def build_route_layers(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[str, Any]], route_polylines: Optional[List[List[tuple]]]=None):
 
@@ -640,7 +648,7 @@ def build_route_layers(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[
 
     markers.append(dl.Marker(position=RETAILER_LOCATION, children=[dl.Tooltip("Retailer (Zürich)")]))
 
- 
+
 
     legs=[]
 
@@ -650,7 +658,7 @@ def build_route_layers(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[
 
     elif farm:              legs.append([(farm["lat"], farm["lon"]), RETAILER_LOCATION])
 
- 
+
 
     poly_src = route_polylines if route_polylines else legs
 
@@ -658,7 +666,7 @@ def build_route_layers(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[
 
     return [dl.LayerGroup(markers + polylines, id="route-layer")]
 
- 
+
 
 def compute_kpis(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[str, Any]], mode: str="Truck", volume_kg: float=1000.0):
 
@@ -686,7 +694,7 @@ def compute_kpis(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[str, A
 
         return {"total":{"distance_km":0.0,"time_h":0.0,"budget_chf":0.0,"co2_t":0.0},"legs":[]}
 
- 
+
 
     cost_per_km = COST_PER_KM_BY_MODE.get(mode, 1.2)
 
@@ -694,7 +702,7 @@ def compute_kpis(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[str, A
 
     speed       = SPEED_KMPH_BY_MODE.get(mode, 60.0)
 
- 
+
 
     total_dist=0.0; total_time=0.0; legs_out=[]
 
@@ -714,7 +722,7 @@ def compute_kpis(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[str, A
 
         legs_out.append({"label": labels[idx], "distance_km": dist_km, "time_h": dur_h})
 
- 
+
 
     budget = total_dist * cost_per_km
 
@@ -722,7 +730,7 @@ def compute_kpis(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[str, A
 
     return {"total":{"distance_km":total_dist,"time_h":total_time,"budget_chf":budget,"co2_t":co2},"legs":legs_out}
 
- 
+
 
 # ----------------------------
 
@@ -731,10 +739,10 @@ def compute_kpis(farm: Optional[Dict[str, Any]], warehouse: Optional[Dict[str, A
 # ----------------------------
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+server = app.server
 
 app.title = "TerraTrace — Climate-Smart Supply Chains"
 
- 
 
 sidebar = dbc.Card([
 
@@ -746,7 +754,7 @@ sidebar = dbc.Card([
 
         dcc.Dropdown(id="company-dd", options=[{"label":"LANDI","value":1}], value=DEFAULT_COMPANY_ID, clearable=False),
 
- 
+
 
         dbc.Label("Overlay"),
 
@@ -784,7 +792,7 @@ sidebar = dbc.Card([
 
         dcc.Dropdown(id="route-mode", options=[{"label":"Truck","value":"Truck"},{"label":"Train","value":"Train"}], value="Truck", clearable=False),
 
- 
+
 
         html.Small(f"Retailer fixed: Zürich {RETAILER_LOCATION}", className="text-muted d-block mb-2"),
 
@@ -808,7 +816,7 @@ sidebar = dbc.Card([
 
 ], className="h-100")
 
- 
+
 
 content = html.Div([
 
@@ -832,7 +840,7 @@ content = html.Div([
 
 ])
 
- 
+
 
 app.layout = dbc.Container(fluid=True, children=[
 
@@ -848,7 +856,7 @@ app.layout = dbc.Container(fluid=True, children=[
 
 ])
 
- 
+
 
 # ----------------------------
 
@@ -898,7 +906,7 @@ def refresh(_n, company_id, crop_value, farm_value, warehouse_value, route_volum
 
     suppliers = normalize_suppliers(suppliers)
 
- 
+
 
     # --- Route selections
 
@@ -918,7 +926,7 @@ def refresh(_n, company_id, crop_value, farm_value, warehouse_value, route_volum
 
                     farm = f; break
 
- 
+
 
     warehouse = None
 
@@ -930,7 +938,7 @@ def refresh(_n, company_id, crop_value, farm_value, warehouse_value, route_volum
 
                 warehouse = w; break
 
- 
+
 
     # --- Build route polylines via OSRM (fallback)
 
@@ -954,13 +962,13 @@ def refresh(_n, company_id, crop_value, farm_value, warehouse_value, route_volum
 
             else:                               poly_routes.append([a,b])
 
- 
+
 
     route_layers = build_route_layers(farm, warehouse, route_polylines=poly_routes if poly_routes else None)
 
     map_el = build_map(suppliers, extra_layers=route_layers)
 
- 
+
 
     # --- Alerts & Recommendations
 
@@ -972,13 +980,13 @@ def refresh(_n, company_id, crop_value, farm_value, warehouse_value, route_volum
 
     alerts = normalize_alerts(alerts)
 
- 
+
 
     sup_index = {s["SupplierId"]: s for s in suppliers if s.get("SupplierId") is not None}
 
     alerts_cards = [alert_card(a, sup_index) for a in alerts] or [html.Div("No active alerts.")]
 
- 
+
 
     recs = api_get(f"/company/{company_id}/recommendations/latest")
 
@@ -988,7 +996,7 @@ def refresh(_n, company_id, crop_value, farm_value, warehouse_value, route_volum
 
     recs_el = recommendations_panel(normalize_recs(recs), sup_index)
 
- 
+
 
     # --- KPI & Validation
 
@@ -1018,11 +1026,11 @@ def refresh(_n, company_id, crop_value, farm_value, warehouse_value, route_volum
 
                                    html.Tbody(rows)], bordered=True, hover=True, size="sm")]
 
- 
+
 
     return map_el, alerts_cards, recs_el, farm_options, route_msg, kpi_children
 
- 
+
 
 @app.callback(
 
@@ -1058,7 +1066,7 @@ def add_supply_chain(_n_clicks, company_id, crop, region, volume):
 
     return "Supply chain mapping added (demo)."
 
- 
+
 
 # ----------------------------
 
@@ -1072,7 +1080,11 @@ if __name__ == "__main__":
     host = os.getenv("FASTAPI_HOST", "127.0.0.1")
     reload_flag = os.getenv("FASTAPI_RELOAD", "True").lower() in ("true", "1", "yes")
 
-    #logger.info("Starting Food-waste frontend...")
-    #logger.info(f"Host: {host}, Reload: {reload_flag}")
+    logger.info("Starting Food-waste frontend...")
+    logger.info(f"Host: {host}, Reload: {reload_flag}")
 
-    uvicorn.run("src.app:app.server", host=host, port=8050, reload=reload_flag)
+    if reload_flag:
+        app.run(host=host, port=8050, debug=True)
+
+    else:
+        uvicorn.run("src.app:app.server", host=host, port=8050, reload=reload_flag)
