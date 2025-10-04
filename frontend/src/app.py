@@ -352,7 +352,7 @@ def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: 
         dl.LayerGroup(marker_children, id="entity-markers"),
         dl.LayerGroup(route_layers, id="route-layers"),
     ]
-    return dl.Map(center=(47.0, 8.0), zoom=6, children=children, style={"height": "65vh", "width": "100%"})
+    return dl.Map(center=(47.0, 8.0), zoom=6, children=children, style={"height": "89vh", "width": "100%"})
 
 
 def alert_card(a: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
@@ -403,7 +403,8 @@ def alert_card(a: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
                 className="mt-3 fw-semibold text-danger"
             ),
         ]),
-        className="mb-3 shadow-sm rounded-3 border-0"
+        className="mb-3 shadow-sm rounded-3 border-0",
+        style={"position": "relative", "zIndex": 10}  # <-- über Hintergrund
     )
 
 
@@ -514,12 +515,12 @@ sidebar = dbc.Card([
         html.H5("Available Stock"),
         html.Div(id="stocks-list", style={"maxHeight": "35vh", "overflowY": "auto"})
     ])
-], className="h-100")
+], className="h-100", style={"position": "relative", "zIndex": 10})  # <-- über Hintergrund
 
 
 
 content = dbc.Row([
-            dbc.Col(html.Div(id="map-container"), md=8),
+            dbc.Col(html.Div(id="map-container", style={"position": "relative", "zIndex": 10}), md=8),  # <-- Map über Hintergrund
             dbc.Col(
                 dbc.Card([
                     dbc.CardHeader("Alerts"),
@@ -527,12 +528,12 @@ content = dbc.Row([
                         html.Div(
                             id="alerts-list",
                             style={
-                                "maxHeight": "65vh",   # same as map height
+                                "maxHeight": "78.9vh",   # same as map height
                                 "overflowY": "auto"   # enable vertical scrolling
                             }
                         )
                     )
-                ]),
+                ], style={"position": "relative", "zIndex": 10}),  # <-- Alerts-Card über Hintergrund
                 md=4
             ),
         ], className="mt-2"), dcc.Interval(id="tick", interval=REFRESH_MS, n_intervals=0)
@@ -541,7 +542,6 @@ content = dbc.Row([
 app.layout = html.Div([
     dcc.Store(id="token-store"),
     dcc.Store(id="selected-supplier-id"),
-
 
     # Login Card
     dbc.Card([
@@ -557,14 +557,30 @@ app.layout = html.Div([
     # Dashboard container (hidden until login)
     dbc.Container([
         dbc.Row([
-            dbc.Col(html.H3("TerraTrace — Climate-Smart Supply Chains"), md=8),
-        ], className="mt-2"),
+    dbc.Col(
+        html.H3(
+            "TerraTrace — Climate-Smart Supply Chains",
+            style={"color": "white"}  # <-- Überschrift weiß
+        ),
+        md=8
+    ),
+], className="mt-2"),
         dbc.Row([
             dbc.Col(sidebar, md=3, style={"height": "100%"}),
             dbc.Col(content, md=9, style={"height": "100%"}),
         ], style={"height": "90%"}, className="mt-2"),
-    ], id="dashboard-container", style={"display": "none", **CONTAINER_STYLE})
-])
+    ], id="dashboard-container", style={"display": "none", **CONTAINER_STYLE, "position": "relative", "zIndex": 10})
+],
+# <<< HINTERGRUND HIER FESTLEGEN >>>
+style={
+    "height": "100vh",
+    "width": "100vw",
+    "backgroundImage": "url('/assets/background.png')",  # Bild im assets-Ordner
+    "backgroundSize": "cover",
+    "backgroundRepeat": "no-repeat",
+    "backgroundPosition": "center",
+    "position": "relative"
+})
 
 
 @app.callback(
@@ -624,7 +640,7 @@ def login(n_clicks, company_name, password):
         logger.info(f"Login successful for company '{company_name}'")
 
         # Hide login card, show dashboard
-        return token, "", {"display": "none"}, {"display": "block", **CONTAINER_STYLE}
+        return token, "", {"display": "none"}, {"display": "block", **CONTAINER_STYLE, "position": "relative", "zIndex": 10}
 
     except Exception as e:
         logger.exception("Login error")
