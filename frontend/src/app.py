@@ -608,15 +608,37 @@ SEVERITY_ORDER = {
     "SURPLUS": 0,
 }
 
-def marker_for_supplier(s, selected_supplier_id=None, show_agriculture=False, show_climate=False, show_transport=False):
+def marker_for_supplier(s, selected_supplier_id=None, show_yield_shortage=False, show_agriculture=False, show_climate=False, show_transport=False):
     is_selected = s.get("SupplierId") == selected_supplier_id
     radius = 14 if is_selected else 10
     weight = 3 if is_selected else 1
     
     print(f"marker_for_supplier called: show_agriculture={show_agriculture}, show_climate={show_climate}, show_transport={show_transport}, supplier={s.get('SupplierId')}")
     
-    # Color logic based on toggles (transport takes priority, then climate, then agriculture)
-    if show_transport:
+    # Color logic based on toggles (yield shortage takes priority, then transport, then climate, then agriculture)
+    if show_yield_shortage:
+        # When yield shortage is ON, show regular suppliers in neutral gray
+        # The wheat CSV data will be shown as separate markers with red/green colors
+        color = "#6b7280"  # Gray - neutral color for regular suppliers
+        
+        tooltip_text = f"{s.get('Name') or 'Supplier'} - Regular Supplier"
+        
+        popup_content = [
+            html.B(s.get("Name") or "Supplier"), html.Br(),
+            html.Div(s.get("Location","")), html.Br(),
+            html.Hr(),
+            html.Div([
+                html.Strong("📋 Regular Supplier"),
+                html.Br(),
+                html.Div("🌾 Wheat yield data shown separately"),
+                html.Div("📊 See wheat farm markers for 2026 predictions"),
+                html.Br(),
+                html.Div("💡 Focus on red/green wheat markers for yield shortage analysis", 
+                        className="small text-primary")
+            ])
+        ]
+        
+    elif show_transport:
         # Use traffic-based colors for logistics risk
         traffic_data = get_traffic_data_for_supplier(s.get("SupplierId"))
         traffic_level = traffic_data["traffic_level"]
@@ -880,7 +902,55 @@ def stock_item_card(s: Dict[str, Any]) -> dbc.ListGroupItem:
     )
 
 
-def build_map_with_caching(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None, show_agriculture=False, show_climate=False, show_transport=False):
+def create_wheat_supplier_marker(wheat_supplier: Dict[str, Any]):
+    """Create marker for wheat supplier based on CSV data"""
+    
+    # Determine color based on yield shortage risk
+    if wheat_supplier["is_risk"]:
+        color = "#ef4444"  # Red for risk (estimated < requested)
+        risk_status = "RISK"
+        risk_emoji = "🔴"
+    else:
+        color = "#22c55e"  # Green for no risk (estimated >= requested)
+        risk_status = "SAFE"
+        risk_emoji = "🟢"
+    
+    # Create tooltip text
+    tooltip_text = f"{wheat_supplier['name']} - {risk_emoji} {risk_status}"
+    
+    # Create popup content with detailed information
+    popup_content = [
+        html.B(wheat_supplier['name']), html.Br(),
+        html.Div(f"📍 {wheat_supplier['location']}"), html.Br(),
+        html.Hr(),
+        html.Div([
+            html.Strong(f"{risk_emoji} Yield Status: {risk_status}"),
+            html.Br(),
+            html.Div(f"🌾 Estimated Yield: {wheat_supplier['estimated_yield']:.0f} tons"),
+            html.Div(f"📋 Requested Yield: {wheat_supplier['requested_yield']:.0f} tons"),
+            html.Div(f"📊 Shortage/Surplus: {wheat_supplier['yield_shortage']:.0f} tons"),
+            html.Br(),
+            html.Div(f"🌱 NDVI: {wheat_supplier['ndvi']:.3f}"),
+            html.Div(f"🌡️ Avg Temperature: {wheat_supplier['temperature']:.1f}°C"),
+            html.Div(f"🌧️ Precipitation: {wheat_supplier['precipitation']:.1f}mm"),
+        ])
+    ]
+    
+    return dl.CircleMarker(
+        id=f"wheat-marker-{wheat_supplier['id']}",
+        center=(wheat_supplier['latitude'], wheat_supplier['longitude']),
+        radius=8,  # Smaller radius for wheat suppliers
+        color=color,
+        weight=2,
+        fill=True,
+        fillOpacity=0.7,
+        children=[
+            dl.Tooltip(tooltip_text),
+            dl.Popup(popup_content)
+        ]
+    )
+
+def build_map_with_caching(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None, show_yield_shortage=False, show_agriculture=False, show_climate=False, show_transport=False):
     """Build map with efficient caching and minimal API calls"""
     
     # Base markers
@@ -889,11 +959,31 @@ def build_map_with_caching(company: Dict[str, Any], suppliers: List[Dict[str, An
     if comp_marker:
         marker_children.append(comp_marker)
     
-    # Enhanced supplier markers with toggle-based colors
-    for s in suppliers:
-        if s.get("Lat") and s.get("Lon"):
-            marker = marker_for_supplier_cached(s, selected_supplier_id, show_agriculture, show_climate, show_transport)
-            marker_children.append(marker)
+    # Add wheat suppliers when yield shortage toggle is ON, otherwise show regular suppliers
+    if show_yield_shortage:
+        # Only show wheat suppliers from CSV data
+        wheat_suppliers = load_wheat_data()
+        print(f"🌾 Loading {len(wheat_suppliers)} wheat suppliers for yield shortage view")
+        
+        risk_markers = 0
+        safe_markers = 0
+        for wheat_supplier in wheat_suppliers:
+            if wheat_supplier.get("latitude") and wheat_supplier.get("longitude"):
+                marker = create_wheat_supplier_marker(wheat_supplier)
+                marker_children.append(marker)
+                if wheat_supplier["is_risk"]:
+                    risk_markers += 1
+                else:
+                    safe_markers += 1
+        
+        print(f"🔴 Added {risk_markers} RISK markers (red)")
+        print(f"🟢 Added {safe_markers} SAFE markers (green)")
+    else:
+        # Show regular suppliers with toggle-based colors
+        for s in suppliers:
+            if s.get("Lat") and s.get("Lon"):
+                marker = marker_for_supplier_cached(s, selected_supplier_id, show_yield_shortage, show_agriculture, show_climate, show_transport)
+                marker_children.append(marker)
 
     # Routes with caching
     route_layers = build_supplier_routes_cached(company, suppliers, show_climate, show_transport)
@@ -940,8 +1030,8 @@ def build_map_with_caching(company: Dict[str, Any], suppliers: List[Dict[str, An
     ])
     
     # Add legend table for active mode
-    if show_agriculture or show_climate or show_transport:
-        legend_table = create_legend_table(show_agriculture, show_climate, show_transport)
+    if show_yield_shortage or show_agriculture or show_climate or show_transport:
+        legend_table = create_legend_table(show_yield_shortage, show_agriculture, show_climate, show_transport)
         if legend_table:
             children.append(legend_table)
     
@@ -954,7 +1044,7 @@ def build_map_with_caching(company: Dict[str, Any], suppliers: List[Dict[str, An
         style={"height": "calc(100vh - 80px)", "width": "100%"}
     )
 
-def marker_for_supplier_cached(s, selected_supplier_id=None, show_agriculture=False, show_climate=False, show_transport=False):
+def marker_for_supplier_cached(s, selected_supplier_id=None, show_yield_shortage=False, show_agriculture=False, show_climate=False, show_transport=False):
     """Cached version of marker_for_supplier with minimal API calls"""
     
     supplier_id = s.get("SupplierId")
@@ -963,7 +1053,7 @@ def marker_for_supplier_cached(s, selected_supplier_id=None, show_agriculture=Fa
     weight = 3 if is_selected else 1
     
     # Use cached data to avoid repeated API calls
-    cache_key = f"marker_data_{supplier_id}_{show_agriculture}_{show_climate}_{show_transport}"
+    cache_key = f"marker_data_{supplier_id}_{show_yield_shortage}_{show_agriculture}_{show_climate}_{show_transport}"
     now = dt.datetime.now().timestamp()
     
     if cache_key in _API_CACHE:
@@ -973,10 +1063,10 @@ def marker_for_supplier_cached(s, selected_supplier_id=None, show_agriculture=Fa
             tooltip_text = cached_data["tooltip"]
             popup_content = cached_data["popup"]
         else:
-            color, tooltip_text, popup_content = get_marker_data(s, show_agriculture, show_climate, show_transport)
+            color, tooltip_text, popup_content = get_marker_data(s, show_yield_shortage, show_agriculture, show_climate, show_transport)
             _API_CACHE[cache_key] = {"color": color, "tooltip": tooltip_text, "popup": popup_content}, now
     else:
-        color, tooltip_text, popup_content = get_marker_data(s, show_agriculture, show_climate, show_transport)
+        color, tooltip_text, popup_content = get_marker_data(s, show_yield_shortage, show_agriculture, show_climate, show_transport)
         _API_CACHE[cache_key] = {"color": color, "tooltip": tooltip_text, "popup": popup_content}, now
     
     marker_key = f"supplier-{supplier_id}-cached"
@@ -995,12 +1085,24 @@ def marker_for_supplier_cached(s, selected_supplier_id=None, show_agriculture=Fa
         ]
     )
 
-def get_marker_data(s, show_agriculture, show_climate, show_transport):
+def get_marker_data(s, show_yield_shortage, show_agriculture, show_climate, show_transport):
     """Get marker color and content based on toggle state"""
     
     supplier_id = s.get("SupplierId")
     
-    if show_transport:
+    if show_yield_shortage:
+        # When yield shortage is ON, show regular suppliers in neutral gray
+        color = "#6b7280"  # Gray - neutral color for regular suppliers
+        
+        tooltip_text = f"{s.get('Name') or 'Supplier'} - Regular Supplier"
+        popup_content = [
+            html.B(s.get("Name") or "Supplier"), html.Br(),
+            html.Div(s.get("Location","")), html.Br(),
+            html.Div("📋 Regular Supplier"),
+            html.Div("🌾 See wheat farm markers for yield data"),
+            html.Div("📊 Focus on red/green markers for 2026 predictions")
+        ]
+    elif show_transport:
         traffic_data = get_traffic_data_for_supplier(supplier_id)
         color = traffic_data["color"]
         tooltip_text = f"{s.get('Name') or 'Supplier'} - Traffic: {traffic_data['traffic_level']}"
@@ -1210,8 +1312,8 @@ def build_map_fast(company: Dict[str, Any], suppliers: List[Dict[str, Any]], ale
     ])
     
     # Add legend table for active mode
-    if show_agriculture or show_climate or show_transport:
-        legend_table = create_legend_table(show_agriculture, show_climate, show_transport)
+    if show_yield_shortage or show_agriculture or show_climate or show_transport:
+        legend_table = create_legend_table(show_yield_shortage, show_agriculture, show_climate, show_transport)
         if legend_table:
             children.append(legend_table)
     
@@ -1316,8 +1418,8 @@ def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: 
     ])
     
     # Add legend table for active mode
-    if show_agriculture or show_climate or show_transport:
-        legend_table = create_legend_table(show_agriculture, show_climate, show_transport)
+    if show_yield_shortage or show_agriculture or show_climate or show_transport:
+        legend_table = create_legend_table(show_yield_shortage, show_agriculture, show_climate, show_transport)
         if legend_table:
             children.append(legend_table)
     
@@ -1386,10 +1488,20 @@ def create_climate_overlay():
             id="climate-overlay-fallback"
         )
 
-def create_legend_table(show_agriculture: bool, show_climate: bool, show_transport: bool = False):
+def create_legend_table(show_yield_shortage: bool = False, show_agriculture: bool = False, show_climate: bool = False, show_transport: bool = False):
     """Create legend table showing color meanings and value ranges"""
     
-    if show_transport:
+    if show_yield_shortage:
+        # 2026 Yield Shortage Legend
+        legend_data = [
+            {"color": "#ef4444", "emoji": "🔴", "risk": "RISK", "conditions": "Estimated < Requested", "impact": "Yield shortage expected"},
+            {"color": "#22c55e", "emoji": "🟢", "risk": "SAFE", "conditions": "Estimated ≥ Requested", "impact": "Sufficient yield projected"}
+        ]
+        
+        title = "🌾 2026 Wheat Yield Legend"
+        headers = ["", "Status", "Condition", "Impact"]
+        
+    elif show_transport:
         # Traffic/Logistics Legend
         legend_data = [
             {"color": "#ef4444", "risk": "HEAVY", "conditions": "Delay > 25 minutes", "impact": "Significant delays expected"},
@@ -1722,6 +1834,160 @@ def get_mock_climate_risk_for_supplier(supplier_id: int) -> Dict:
         "delay_factor": 1.0,
         "additional_delay_minutes": 0,
         "recommendation": "Normal operations"
+    }
+
+def load_wheat_data():
+    """Load wheat data from CSV file"""
+    try:
+        import pandas as pd
+        import os
+        
+        # Try multiple possible paths for the CSV file
+        possible_paths = [
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "data-science", "Wheat_estimated_requested.csv"),
+            os.path.join("data-science", "Wheat_estimated_requested.csv"),
+            os.path.join("..", "data-science", "Wheat_estimated_requested.csv"),
+            "data-science/Wheat_estimated_requested.csv"
+        ]
+        
+        csv_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                csv_path = path
+                break
+        
+        if not csv_path:
+            print(f"❌ CSV file not found. Tried paths: {possible_paths}")
+            # Return some mock wheat data for testing
+            return [
+                {
+                    "id": "wheat_test_1",
+                    "name": "Test Wheat Farm - Bern",
+                    "location": "Bern",
+                    "latitude": 46.9481,
+                    "longitude": 7.4474,
+                    "estimated_yield": 25000,
+                    "requested_yield": 27000,
+                    "yield_shortage": -2000,
+                    "is_risk": True,
+                    "ndvi": 0.3,
+                    "temperature": 10.5,
+                    "precipitation": 5.2
+                },
+                {
+                    "id": "wheat_test_2", 
+                    "name": "Test Wheat Farm - Zurich",
+                    "location": "Zurich",
+                    "latitude": 47.3769,
+                    "longitude": 8.5417,
+                    "estimated_yield": 30000,
+                    "requested_yield": 25000,
+                    "yield_shortage": 5000,
+                    "is_risk": False,
+                    "ndvi": 0.7,
+                    "temperature": 12.1,
+                    "precipitation": 3.8
+                }
+            ]
+        
+        print(f"📂 Loading wheat data from: {csv_path}")
+        
+        # Read the CSV file
+        df = pd.read_csv(csv_path)
+        print(f"📊 CSV loaded with {len(df)} rows")
+        
+        # Convert to list of dictionaries for easier processing
+        wheat_suppliers = []
+        for index, row in df.iterrows():
+            # Calculate risk based on yield shortage
+            estimated_yield = row['estimated_yield']
+            requested_yield = row['requested_yield']
+            yield_shortage = estimated_yield - requested_yield
+            is_risk = yield_shortage < 0
+            
+            wheat_suppliers.append({
+                "id": f"wheat_{index}",
+                "name": f"Wheat Farm - {row['Standort']}",
+                "location": row['Standort'],
+                "latitude": row['Latitude'],
+                "longitude": row['Longitude'],
+                "estimated_yield": estimated_yield,
+                "requested_yield": requested_yield,
+                "yield_shortage": yield_shortage,
+                "is_risk": is_risk,
+                "ndvi": row.get('ndvi', 0),
+                "temperature": row.get('tavg', 0),
+                "precipitation": row.get('prcp', 0)
+            })
+        
+        # Count risk vs safe for debugging
+        risk_count = sum(1 for s in wheat_suppliers if s['is_risk'])
+        safe_count = len(wheat_suppliers) - risk_count
+        print(f"✅ Loaded {len(wheat_suppliers)} wheat suppliers: {risk_count} RISK (🔴), {safe_count} SAFE (🟢)")
+        
+        return wheat_suppliers
+        
+    except Exception as e:
+        print(f"❌ Error loading wheat data: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+def get_yield_shortage_risk_for_supplier(supplier_id: int) -> Dict:
+    """Get 2026 yield shortage risk prediction for supplier"""
+    import random
+    
+    # Set seed for consistent results per supplier
+    random.seed(supplier_id * 2026)
+    
+    # Define risk factors and affected crops based on supplier characteristics
+    risk_factors_pool = [
+        "Climate change impact", "Drought conditions", "Soil degradation", 
+        "Water scarcity", "Extreme weather events", "Pest pressure increase",
+        "Temperature fluctuations", "Seasonal pattern shifts", "Supply chain disruption"
+    ]
+    
+    crops_pool = [
+        "wheat", "corn", "soybeans", "rice", "potatoes", "vegetables", 
+        "dairy", "grapes", "organic produce", "specialty crops"
+    ]
+    
+    # Generate risk level based on supplier ID patterns
+    if supplier_id in [4, 10]:  # Organic Harvest Co, Tyrolean Mountain Farms
+        risk_level = "CRITICAL"
+        yield_impact = random.randint(35, 50)
+        timeline = "Q2 2026 - Immediate action required"
+        mitigation = "Diversify suppliers immediately, secure alternative sources"
+    elif supplier_id in [2, 7, 9, 25, 31, 42]:  # Various risk suppliers
+        risk_level = "HIGH" 
+        yield_impact = random.randint(20, 35)
+        timeline = "Q3 2026 - Monitor closely"
+        mitigation = "Develop contingency plans, increase monitoring"
+    elif supplier_id in [18, 23, 34]:  # Some stable suppliers with medium risk
+        risk_level = "MEDIUM"
+        yield_impact = random.randint(10, 20)
+        timeline = "Q4 2026 - Prepare alternatives"
+        mitigation = "Regular assessment, backup supplier identification"
+    else:  # Most suppliers have low risk
+        risk_level = "LOW"
+        yield_impact = random.randint(0, 10)
+        timeline = "2027+ - Long-term monitoring"
+        mitigation = "Continue current practices, periodic review"
+    
+    # Select random risk factors and crops
+    num_factors = random.randint(2, 4)
+    selected_factors = random.sample(risk_factors_pool, num_factors)
+    
+    num_crops = random.randint(1, 3)
+    selected_crops = random.sample(crops_pool, num_crops)
+    
+    return {
+        "risk_level": risk_level,
+        "yield_impact": yield_impact,
+        "affected_crops": selected_crops,
+        "risk_factors": selected_factors,
+        "timeline": timeline,
+        "mitigation": mitigation
     }
 
 def recommendations_panel(recs: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
@@ -2102,6 +2368,16 @@ app.layout = html.Div([
                     "Risk Factors"
                 ], className="mb-3 text-white fw-bold"),
                 
+                # 2026 Yield Shortage (NEW - First priority)
+                html.Div([
+                    dbc.Switch(
+                        id="yield-shortage-toggle", 
+                        value=False,
+                        label="2026 Yield Shortage",
+                        style={"color": "white"}
+                    )
+                ], className="mb-2"),
+
                 # Climate and Transportation Logistics
                 html.Div([
                     dbc.Switch(
@@ -2652,29 +2928,30 @@ def load_suppliers_data(token):
 @app.callback(
     Output("map-container", "children"),
     [Input("suppliers-data-store", "data"),
+     Input("yield-shortage-toggle", "value"),
      Input("agriculture-toggle", "value"),
      Input("climate-toggle", "value"),
      Input("transport-toggle", "value")],
     prevent_initial_call=False
 )
-def update_map_with_heavy_caching(suppliers_data, show_agriculture, show_climate, show_transport):
+def update_map_with_heavy_caching(suppliers_data, show_yield_shortage, show_agriculture, show_climate, show_transport):
     """Update map with aggressive caching to minimize rebuilds"""
     
     if not suppliers_data:
         return html.Div("Loading suppliers data...", className="text-white text-center p-4")
     
     # Create cache key for this exact configuration
-    cache_key = f"map_v2_{len(suppliers_data)}_{show_agriculture}_{show_climate}_{show_transport}"
+    cache_key = f"map_v3_{len(suppliers_data)}_{show_yield_shortage}_{show_agriculture}_{show_climate}_{show_transport}"
     now = dt.datetime.now().timestamp()
     
-    # Check cache first (30 second cache)
+    # Check cache first (5 second cache for debugging)
     if cache_key in _API_CACHE:
         cached_map, timestamp = _API_CACHE[cache_key]
-        if now - timestamp < 30:
-            print(f"🚀 Using cached map for toggles: agri={show_agriculture}, climate={show_climate}, transport={show_transport}")
+        if now - timestamp < 5:
+            print(f"🚀 Using cached map for toggles: yield={show_yield_shortage}, agri={show_agriculture}, climate={show_climate}, transport={show_transport}")
             return cached_map
     
-    print(f"🔄 Building map for toggles: agri={show_agriculture}, climate={show_climate}, transport={show_transport}")
+    print(f"🔄 Building NEW map for toggles: yield={show_yield_shortage}, agri={show_agriculture}, climate={show_climate}, transport={show_transport}")
     
     # Normalize company data
     normalized_company = {
@@ -2687,7 +2964,7 @@ def update_map_with_heavy_caching(suppliers_data, show_agriculture, show_climate
     }
     
     # Build map with current toggle states
-    map_component = build_map_with_caching(normalized_company, suppliers_data, MOCK_ALERTS, None, show_agriculture, show_climate, show_transport)
+    map_component = build_map_with_caching(normalized_company, suppliers_data, MOCK_ALERTS, None, show_yield_shortage, show_agriculture, show_climate, show_transport)
     
     # Cache the result
     _API_CACHE[cache_key] = (map_component, now)
@@ -2739,19 +3016,22 @@ def update_alerts_list(suppliers_data):
 # Clientside callback for instant toggle label updates
 app.clientside_callback(
     """
-    function(agriculture_value, climate_value, transport_value) {
+    function(yield_value, agriculture_value, climate_value, transport_value) {
         // Update toggle states instantly on client side
+        const yield_label = yield_value ? "2026 Yield Shortage: ON" : "2026 Yield Shortage: OFF";
         const agriculture_label = agriculture_value ? "Agricultural Monitoring: ON" : "Agricultural Monitoring: OFF";
         const climate_label = climate_value ? "Climate and Transportation Logistics: ON" : "Climate and Transportation Logistics: OFF";
         const transport_label = transport_value ? "Transportation & Logistics: ON" : "Transportation & Logistics: OFF";
         
-        return [agriculture_label, climate_label, transport_label];
+        return [yield_label, agriculture_label, climate_label, transport_label];
     }
     """,
-    [Output("agriculture-toggle", "label"),
+    [Output("yield-shortage-toggle", "label"),
+     Output("agriculture-toggle", "label"),
      Output("climate-toggle", "label"),
      Output("transport-toggle", "label")],
-    [Input("agriculture-toggle", "value"),
+    [Input("yield-shortage-toggle", "value"),
+     Input("agriculture-toggle", "value"),
      Input("climate-toggle", "value"),
      Input("transport-toggle", "value")]
 )
