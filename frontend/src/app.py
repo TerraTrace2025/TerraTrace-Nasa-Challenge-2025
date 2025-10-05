@@ -50,6 +50,322 @@ APP_PORT = int(os.getenv("PORT", "8051"))
 _API_CACHE = {}
 _CACHE_TIMEOUT = 300  # 5 minutes
 
+# ----------------------------
+# RAG Knowledge Base for Risk Indicators
+# ----------------------------
+RAG_KNOWLEDGE_BASE = {
+    "agriculture_risk": {
+        "overview": "Agricultural risk assessment uses NDVI (Normalized Difference Vegetation Index) satellite data to monitor crop health across supplier locations.",
+        "metrics": {
+            "ndvi_ranges": {
+                "healthy": {"range": "> 0.7", "color": "green", "description": "Excellent crop health, optimal growing conditions"},
+                "moderate": {"range": "0.5 - 0.7", "color": "yellow", "description": "Moderate crop health, some stress indicators"},
+                "stressed": {"range": "0.3 - 0.5", "color": "orange", "description": "Crop stress detected, potential yield reduction"},
+                "critical": {"range": "< 0.3", "color": "red", "description": "Severe crop stress, significant yield impact expected"}
+            },
+            "factors": [
+                "Drought conditions affecting vegetation growth",
+                "Excessive rainfall causing waterlogging",
+                "Temperature extremes impacting crop development",
+                "Pest and disease pressure on crops",
+                "Soil quality and nutrient availability"
+            ]
+        },
+        "suppliers": {
+            "1": {"name": "Fenaco Genossenschaft", "location": "Bern, Switzerland", "ndvi": 0.75, "status": "healthy", "risk_factors": ["Stable weather conditions", "Good soil moisture"], "crops": ["grains", "dairy"]},
+            "2": {"name": "Alpine Farms AG", "location": "Thurgau, Switzerland", "ndvi": 0.45, "status": "stressed", "risk_factors": ["Alpine climate challenges", "Short growing season"], "crops": ["potatoes", "vegetables"]},
+            "3": {"name": "Swiss Valley Produce", "location": "Innsbruck, Austria", "ndvi": 0.68, "status": "healthy", "risk_factors": ["Seasonal variations", "Mountain agriculture"], "crops": ["corn", "vegetables"]},
+            "4": {"name": "Organic Harvest Co", "location": "Lucerne, Switzerland", "ndvi": 0.25, "status": "critical", "risk_factors": ["Severe drought", "Organic pest management challenges"], "crops": ["soybeans", "organic produce"]},
+            "5": {"name": "Bavarian Grain Collective", "location": "Munich, Germany", "ndvi": 0.72, "status": "healthy", "risk_factors": ["Stable continental climate", "Good infrastructure"], "crops": ["grains", "corn"]},
+            "6": {"name": "Rhône Valley Vineyards", "location": "Geneva, Switzerland", "ndvi": 0.82, "status": "healthy", "risk_factors": ["Optimal grape growing conditions", "Surplus harvest"], "crops": ["grapes", "wine"]},
+            "7": {"name": "Lombardy Agricultural Union", "location": "Milan, Italy", "ndvi": 0.42, "status": "stressed", "risk_factors": ["Flooding concerns", "Heavy rainfall"], "crops": ["rice", "dairy"]},
+            "8": {"name": "Black Forest Organics", "location": "Freiburg, Germany", "ndvi": 0.69, "status": "healthy", "risk_factors": ["Forest microclimate benefits", "Organic certification"], "crops": ["organic vegetables", "herbs"]},
+            "9": {"name": "Alsace Premium Produce", "location": "Strasbourg, France", "ndvi": 0.58, "status": "moderate", "risk_factors": ["Seasonal weather variations", "Cross-border logistics"], "crops": ["wine grapes", "specialty produce"]},
+            "10": {"name": "Tyrolean Mountain Farms", "location": "Graz, Austria", "ndvi": 0.35, "status": "stressed", "risk_factors": ["High altitude conditions", "Temperature fluctuations"], "crops": ["dairy", "mountain herbs"]}
+        },
+        "recommendations": {
+            "healthy": "Continue current practices, monitor for changes",
+            "moderate": "Increase monitoring frequency, prepare contingency plans",
+            "stressed": "Implement water management strategies, consider alternative suppliers",
+            "critical": "Immediate action required, diversify supply sources"
+        }
+    },
+    "climate_risk": {
+        "overview": "Climate risk assessment evaluates weather-related transport disruptions and supply chain impacts based on real-time meteorological data.",
+        "metrics": {
+            "risk_levels": {
+                "low": {"description": "Normal weather conditions, minimal transport delays", "color": "green"},
+                "medium": {"description": "Moderate weather impact, some delays expected", "color": "yellow"},
+                "high": {"description": "Severe weather conditions, significant disruptions", "color": "red"}
+            },
+            "weather_factors": [
+                "Temperature extremes affecting transport efficiency",
+                "Precipitation levels impacting road conditions",
+                "Wind speeds affecting logistics operations",
+                "Seasonal weather patterns",
+                "Climate change adaptation requirements"
+            ]
+        },
+        "suppliers": {
+            "1": {"name": "Fenaco Genossenschaft", "temp": 15, "precip": 2.5, "risk": "low", "impact": "Minimal delays expected", "forecast": "Stable conditions next 7 days"},
+            "2": {"name": "Alpine Farms AG", "temp": 8, "precip": 15.2, "risk": "medium", "impact": "Mountain weather affecting transport", "forecast": "Snow possible, monitor conditions"},
+            "3": {"name": "Swiss Valley Produce", "temp": 12, "precip": 8.1, "risk": "low", "impact": "Normal operations", "forecast": "Clear weather expected"},
+            "4": {"name": "Organic Harvest Co", "temp": 18, "precip": 0.8, "risk": "medium", "impact": "Drought conditions affecting crops", "forecast": "No rain forecast, drought continues"},
+            "5": {"name": "Bavarian Grain Collective", "temp": 16, "precip": 5.2, "risk": "low", "impact": "Good transport conditions", "forecast": "Mild weather continuing"},
+            "6": {"name": "Rhône Valley Vineyards", "temp": 19, "precip": 3.1, "risk": "low", "impact": "Optimal harvest conditions", "forecast": "Perfect weather for harvest"},
+            "7": {"name": "Lombardy Agricultural Union", "temp": 22, "precip": 45.8, "risk": "high", "impact": "Heavy rainfall disrupting logistics", "forecast": "Storms continuing, flooding risk"},
+            "8": {"name": "Black Forest Organics", "temp": 14, "precip": 12.3, "risk": "medium", "impact": "Moderate rainfall, some delays", "forecast": "Rain tapering off"},
+            "9": {"name": "Alsace Premium Produce", "temp": 12, "precip": 8.7, "risk": "medium", "impact": "Seasonal weather variations", "forecast": "Variable conditions"},
+            "10": {"name": "Tyrolean Mountain Farms", "temp": 6, "precip": 18.5, "risk": "high", "impact": "Alpine weather disrupting dairy operations", "forecast": "Cold front approaching"}
+        },
+        "seasonal_patterns": {
+            "winter": "Increased transport delays due to snow and ice conditions",
+            "spring": "Flooding risks in certain regions affecting logistics",
+            "summer": "Heat waves impacting perishable goods transport",
+            "autumn": "Storm systems causing temporary disruptions"
+        }
+    },
+    "transport_risk": {
+        "overview": "Transport risk assessment monitors real-time traffic conditions, route efficiency, and logistics performance across the supply network.",
+        "metrics": {
+            "traffic_levels": {
+                "light": {"delay": "0-5 minutes", "color": "green", "description": "Optimal transport conditions"},
+                "moderate": {"delay": "5-15 minutes", "color": "yellow", "description": "Some congestion, minor delays"},
+                "heavy": {"delay": "15+ minutes", "color": "red", "description": "Significant traffic delays"}
+            },
+            "transport_modes": [
+                "Truck transport - most flexible but weather dependent",
+                "Rail transport - more reliable but limited routes",
+                "Combined transport - optimal for long distances"
+            ]
+        },
+        "suppliers": {
+            "1": {"name": "Fenaco Genossenschaft", "traffic": "light", "delay": 3, "route": "Bern-Zurich corridor", "transport_modes": ["truck", "train"], "reliability": "95%"},
+            "2": {"name": "Alpine Farms AG", "traffic": "moderate", "delay": 12, "route": "Mountain routes with seasonal challenges", "transport_modes": ["truck"], "reliability": "87%"},
+            "3": {"name": "Swiss Valley Produce", "traffic": "light", "delay": 8, "route": "Innsbruck-Zurich via A12", "transport_modes": ["truck", "train"], "reliability": "92%"},
+            "4": {"name": "Organic Harvest Co", "traffic": "moderate", "delay": 15, "route": "Lucerne-Zurich direct", "transport_modes": ["truck"], "reliability": "78%"},
+            "5": {"name": "Bavarian Grain Collective", "traffic": "heavy", "delay": 25, "route": "Munich-Zurich via A8 autobahn", "transport_modes": ["truck", "train"], "reliability": "82%"},
+            "6": {"name": "Rhône Valley Vineyards", "traffic": "light", "delay": 5, "route": "Geneva-Zurich via A1", "transport_modes": ["truck"], "reliability": "94%"},
+            "7": {"name": "Lombardy Agricultural Union", "traffic": "moderate", "delay": 18, "route": "Milan-Zurich via Gotthard", "transport_modes": ["truck", "train"], "reliability": "85%"},
+            "8": {"name": "Black Forest Organics", "traffic": "light", "delay": 7, "route": "Freiburg-Zurich via A3", "transport_modes": ["truck"], "reliability": "91%"},
+            "9": {"name": "Alsace Premium Produce", "traffic": "moderate", "delay": 14, "route": "Strasbourg-Zurich via A4", "transport_modes": ["truck", "train"], "reliability": "88%"},
+            "10": {"name": "Tyrolean Mountain Farms", "traffic": "heavy", "delay": 22, "route": "Graz-Zurich via A9/A1", "transport_modes": ["truck"], "reliability": "79%"}
+        },
+        "optimization_strategies": [
+            "Dynamic route planning based on real-time traffic",
+            "Multi-modal transport combinations",
+            "Strategic warehouse positioning",
+            "Predictive analytics for demand forecasting"
+        ]
+    },
+    "supplier_directory": {
+        # Switzerland (8 suppliers)
+        "1": {"name": "Fenaco Genossenschaft", "location": "Bern, Switzerland", "tier": "SURPLUS", "specialties": ["grains", "dairy"], "capacity": "high", "contract_type": "long-term"},
+        "2": {"name": "Alpine Farms AG", "location": "Thurgau, Switzerland", "tier": "RISK", "specialties": ["potatoes", "vegetables"], "capacity": "medium", "contract_type": "seasonal"},
+        "4": {"name": "Organic Harvest Co", "location": "Lucerne, Switzerland", "tier": "HIGHRISK", "specialties": ["soybeans", "organic produce"], "capacity": "low", "contract_type": "premium"},
+        "6": {"name": "Rhône Valley Vineyards", "location": "Geneva, Switzerland", "tier": "SURPLUS", "specialties": ["grapes", "wine"], "capacity": "medium", "contract_type": "seasonal"},
+        "11": {"name": "Valais Mountain Dairy", "location": "Sion, Switzerland", "tier": "SURPLUS", "specialties": ["dairy", "cheese"], "capacity": "medium", "contract_type": "long-term"},
+        "12": {"name": "Graubünden Organic", "location": "Chur, Switzerland", "tier": "STABLE", "specialties": ["organic vegetables", "herbs"], "capacity": "medium", "contract_type": "premium"},
+        "13": {"name": "Ticino Vineyards", "location": "Lugano, Switzerland", "tier": "SURPLUS", "specialties": ["wine", "grapes"], "capacity": "medium", "contract_type": "seasonal"},
+        "14": {"name": "Jura Cheese Collective", "location": "Delémont, Switzerland", "tier": "STABLE", "specialties": ["cheese", "dairy"], "capacity": "medium", "contract_type": "specialty"},
+        
+        # Germany (12 suppliers)
+        "5": {"name": "Bavarian Grain Collective", "location": "Munich, Germany", "tier": "SURPLUS", "specialties": ["grains", "corn"], "capacity": "very high", "contract_type": "bulk"},
+        "8": {"name": "Black Forest Organics", "location": "Freiburg, Germany", "tier": "SURPLUS", "specialties": ["organic vegetables", "herbs"], "capacity": "medium", "contract_type": "premium"},
+        "15": {"name": "Baden-Württemberg Farms", "location": "Stuttgart, Germany", "tier": "SURPLUS", "specialties": ["vegetables", "grains"], "capacity": "high", "contract_type": "long-term"},
+        "16": {"name": "Rhineland Produce", "location": "Cologne, Germany", "tier": "STABLE", "specialties": ["vegetables", "fruits"], "capacity": "high", "contract_type": "long-term"},
+        "17": {"name": "Swabian Grain Co", "location": "Augsburg, Germany", "tier": "SURPLUS", "specialties": ["grains", "cereals"], "capacity": "very high", "contract_type": "bulk"},
+        "18": {"name": "Allgäu Dairy Union", "location": "Kempten, Germany", "tier": "RISK", "specialties": ["dairy", "cheese"], "capacity": "high", "contract_type": "long-term"},
+        "19": {"name": "Franconian Organics", "location": "Nuremberg, Germany", "tier": "STABLE", "specialties": ["organic produce", "grains"], "capacity": "medium", "contract_type": "premium"},
+        "20": {"name": "Lake Constance Fruits", "location": "Konstanz, Germany", "tier": "SURPLUS", "specialties": ["fruits", "vegetables"], "capacity": "medium", "contract_type": "seasonal"},
+        "21": {"name": "Hessian Grain Mills", "location": "Frankfurt, Germany", "tier": "STABLE", "specialties": ["grains", "flour"], "capacity": "high", "contract_type": "bulk"},
+        "22": {"name": "Palatinate Vineyards", "location": "Mannheim, Germany", "tier": "SURPLUS", "specialties": ["wine", "grapes"], "capacity": "medium", "contract_type": "seasonal"},
+        "23": {"name": "Thuringian Vegetables", "location": "Erfurt, Germany", "tier": "RISK", "specialties": ["vegetables", "herbs"], "capacity": "medium", "contract_type": "seasonal"},
+        "24": {"name": "Saxon Specialty Foods", "location": "Dresden, Germany", "tier": "STABLE", "specialties": ["specialty produce", "organic"], "capacity": "medium", "contract_type": "premium"},
+        
+        # Austria (10 suppliers)
+        "3": {"name": "Swiss Valley Produce", "location": "Innsbruck, Austria", "tier": "SURPLUS", "specialties": ["corn", "vegetables"], "capacity": "high", "contract_type": "long-term"},
+        "10": {"name": "Tyrolean Mountain Farms", "location": "Graz, Austria", "tier": "HIGHRISK", "specialties": ["dairy", "mountain herbs"], "capacity": "low", "contract_type": "specialty"},
+        "25": {"name": "Salzburg Alpine Farms", "location": "Salzburg, Austria", "tier": "RISK", "specialties": ["dairy", "alpine cheese"], "capacity": "medium", "contract_type": "specialty"},
+        "26": {"name": "Vorarlberg Dairy", "location": "Bregenz, Austria", "tier": "STABLE", "specialties": ["dairy", "cheese"], "capacity": "medium", "contract_type": "long-term"},
+        "27": {"name": "Carinthian Organics", "location": "Klagenfurt, Austria", "tier": "SURPLUS", "specialties": ["organic vegetables", "herbs"], "capacity": "medium", "contract_type": "premium"},
+        "28": {"name": "Upper Austria Grains", "location": "Linz, Austria", "tier": "STABLE", "specialties": ["grains", "cereals"], "capacity": "high", "contract_type": "bulk"},
+        "29": {"name": "Styrian Pumpkins", "location": "Graz, Austria", "tier": "SURPLUS", "specialties": ["pumpkins", "vegetables"], "capacity": "medium", "contract_type": "seasonal"},
+        "30": {"name": "Burgenland Wines", "location": "Eisenstadt, Austria", "tier": "SURPLUS", "specialties": ["wine", "grapes"], "capacity": "medium", "contract_type": "seasonal"},
+        "31": {"name": "Tyrol Mountain Herbs", "location": "Innsbruck, Austria", "tier": "RISK", "specialties": ["herbs", "mountain produce"], "capacity": "low", "contract_type": "specialty"},
+        "32": {"name": "Lower Austria Vegetables", "location": "Vienna, Austria", "tier": "STABLE", "specialties": ["vegetables", "grains"], "capacity": "high", "contract_type": "long-term"},
+        
+        # Italy (7 suppliers)
+        "7": {"name": "Lombardy Agricultural Union", "location": "Milan, Italy", "tier": "RISK", "specialties": ["rice", "dairy"], "capacity": "high", "contract_type": "long-term"},
+        "33": {"name": "Piedmont Truffles", "location": "Turin, Italy", "tier": "SURPLUS", "specialties": ["truffles", "specialty produce"], "capacity": "low", "contract_type": "premium"},
+        "34": {"name": "Veneto Rice Fields", "location": "Venice, Italy", "tier": "RISK", "specialties": ["rice", "grains"], "capacity": "high", "contract_type": "bulk"},
+        "35": {"name": "Emilia-Romagna Cheese", "location": "Bologna, Italy", "tier": "STABLE", "specialties": ["cheese", "dairy"], "capacity": "high", "contract_type": "premium"},
+        "36": {"name": "Trentino Apples", "location": "Trento, Italy", "tier": "SURPLUS", "specialties": ["apples", "fruits"], "capacity": "high", "contract_type": "seasonal"},
+        "37": {"name": "South Tyrol Organics", "location": "Bolzano, Italy", "tier": "STABLE", "specialties": ["organic produce", "herbs"], "capacity": "medium", "contract_type": "premium"},
+        "38": {"name": "Friuli Wines", "location": "Trieste, Italy", "tier": "SURPLUS", "specialties": ["wine", "grapes"], "capacity": "medium", "contract_type": "seasonal"},
+        
+        # France (5 suppliers)
+        "9": {"name": "Alsace Premium Produce", "location": "Strasbourg, France", "tier": "RISK", "specialties": ["wine grapes", "specialty produce"], "capacity": "medium", "contract_type": "premium"},
+        "39": {"name": "Burgundy Vineyards", "location": "Dijon, France", "tier": "SURPLUS", "specialties": ["wine", "grapes"], "capacity": "medium", "contract_type": "premium"},
+        "40": {"name": "Franche-Comté Dairy", "location": "Besançon, France", "tier": "STABLE", "specialties": ["dairy", "cheese"], "capacity": "medium", "contract_type": "long-term"},
+        "41": {"name": "Champagne Growers", "location": "Reims, France", "tier": "SURPLUS", "specialties": ["champagne grapes", "wine"], "capacity": "medium", "contract_type": "premium"},
+        "42": {"name": "Lorraine Vegetables", "location": "Metz, France", "tier": "RISK", "specialties": ["vegetables", "grains"], "capacity": "medium", "contract_type": "seasonal"}
+    },
+    "current_alerts": {
+        "high_priority": [
+            {"supplier": "Organic Harvest Co", "issue": "Critical drought affecting soybean harvest", "impact": "40% yield reduction", "action": "Source alternatives immediately"},
+            {"supplier": "Tyrolean Mountain Farms", "issue": "Alpine weather disrupting dairy operations", "impact": "Delivery delays 2-3 days", "action": "Activate backup suppliers"}
+        ],
+        "medium_priority": [
+            {"supplier": "Alpine Farms AG", "issue": "Storage temperature fluctuations", "impact": "Potato quality concerns", "action": "Increase quality checks"},
+            {"supplier": "Lombardy Agricultural Union", "issue": "Heavy rainfall affecting rice fields", "impact": "Potential flooding damage", "action": "Monitor weather forecasts"},
+            {"supplier": "Alsace Premium Produce", "issue": "Cross-border transport delays", "impact": "15-20 minute delays", "action": "Adjust delivery schedules"}
+        ],
+        "opportunities": [
+            {"supplier": "Rhône Valley Vineyards", "issue": "Exceptional grape harvest", "impact": "25% above-average yield", "action": "Negotiate bulk pricing"},
+            {"supplier": "Swiss Valley Produce", "issue": "Corn surplus available", "impact": "500t additional capacity", "action": "Consider forward contracts"}
+        ]
+    },
+    "company_context": {
+        "name": "Swiss Corp",
+        "location": "Zurich, Switzerland",
+        "business": "Food supply chain management and distribution",
+        "suppliers": 42,
+        "countries": ["Switzerland", "Germany", "Austria", "Italy", "France"],
+        "key_challenges": [
+            "Managing agricultural supply variability",
+            "Climate change adaptation",
+            "Transport optimization across Alpine regions",
+            "Maintaining food quality and safety standards"
+        ],
+        "current_priorities": [
+            "Mitigate drought impact on soybean supply",
+            "Secure alternative dairy sources",
+            "Optimize transport routes during weather disruptions",
+            "Capitalize on surplus opportunities"
+        ]
+    }
+}
+
+def get_rag_context(query: str) -> str:
+    """Extract relevant context from RAG knowledge base based on query"""
+    query_lower = query.lower()
+    context_parts = []
+    
+    # Add company context
+    context_parts.append(f"Company: {RAG_KNOWLEDGE_BASE['company_context']['name']} - {RAG_KNOWLEDGE_BASE['company_context']['business']}")
+    
+    # Check for specific supplier queries
+    supplier_mentioned = None
+    for supplier_id, supplier_data in RAG_KNOWLEDGE_BASE['supplier_directory'].items():
+        if supplier_data['name'].lower() in query_lower or supplier_data['location'].lower() in query_lower:
+            supplier_mentioned = supplier_id
+            break
+    
+    if supplier_mentioned:
+        supplier = RAG_KNOWLEDGE_BASE['supplier_directory'][supplier_mentioned]
+        context_parts.append(f"SUPPLIER FOCUS: {supplier['name']} ({supplier['location']})")
+        context_parts.append(f"- Tier: {supplier['tier']}, Specialties: {', '.join(supplier['specialties'])}")
+        
+        # Add specific risk data for this supplier
+        if supplier_mentioned in RAG_KNOWLEDGE_BASE['agriculture_risk']['suppliers']:
+            ag_data = RAG_KNOWLEDGE_BASE['agriculture_risk']['suppliers'][supplier_mentioned]
+            context_parts.append(f"- Agriculture: NDVI {ag_data['ndvi']} ({ag_data['status']})")
+        
+        if supplier_mentioned in RAG_KNOWLEDGE_BASE['climate_risk']['suppliers']:
+            climate_data = RAG_KNOWLEDGE_BASE['climate_risk']['suppliers'][supplier_mentioned]
+            context_parts.append(f"- Climate: {climate_data['temp']}°C, {climate_data['precip']}mm, Risk: {climate_data['risk']}")
+        
+        if supplier_mentioned in RAG_KNOWLEDGE_BASE['transport_risk']['suppliers']:
+            transport_data = RAG_KNOWLEDGE_BASE['transport_risk']['suppliers'][supplier_mentioned]
+            context_parts.append(f"- Transport: {transport_data['traffic']} traffic, +{transport_data['delay']} min delay, {transport_data['reliability']} reliability")
+    
+    # Check for agriculture-related queries
+    if any(term in query_lower for term in ['agriculture', 'crop', 'ndvi', 'farm', 'harvest', 'yield', 'drought', 'soybean']):
+        ag_data = RAG_KNOWLEDGE_BASE['agriculture_risk']
+        context_parts.append(f"AGRICULTURE RISK: {ag_data['overview']}")
+        context_parts.append("Critical suppliers by NDVI status:")
+        for supplier_id, data in ag_data['suppliers'].items():
+            context_parts.append(f"- {data['name']}: NDVI {data['ndvi']} ({data['status']}) - {', '.join(data['crops'])}")
+    
+    # Check for climate-related queries
+    if any(term in query_lower for term in ['climate', 'weather', 'temperature', 'rain', 'storm', 'flooding']):
+        climate_data = RAG_KNOWLEDGE_BASE['climate_risk']
+        context_parts.append(f"CLIMATE RISK: {climate_data['overview']}")
+        context_parts.append("Current weather conditions by risk level:")
+        for supplier_id, data in climate_data['suppliers'].items():
+            context_parts.append(f"- {data['name']}: {data['temp']}°C, {data['precip']}mm, {data['risk']} risk - {data['forecast']}")
+    
+    # Check for transport-related queries
+    if any(term in query_lower for term in ['transport', 'traffic', 'logistics', 'delivery', 'route', 'delay', 'reliability']):
+        transport_data = RAG_KNOWLEDGE_BASE['transport_risk']
+        context_parts.append(f"TRANSPORT RISK: {transport_data['overview']}")
+        context_parts.append("Transport performance by reliability:")
+        for supplier_id, data in transport_data['suppliers'].items():
+            context_parts.append(f"- {data['name']}: {data['reliability']} reliable, +{data['delay']} min delay, {data['traffic']} traffic")
+    
+    # Check for supplier listing queries
+    if any(term in query_lower for term in ['list', 'all suppliers', '42 suppliers', 'show suppliers', 'supplier list']):
+        context_parts.append("COMPLETE SUPPLIER DIRECTORY (42 suppliers):")
+        supplier_dir = RAG_KNOWLEDGE_BASE['supplier_directory']
+        
+        # Group by country for better organization
+        countries = {}
+        for supplier_id, supplier in supplier_dir.items():
+            country = supplier['location'].split(', ')[-1]
+            if country not in countries:
+                countries[country] = []
+            countries[country].append(f"- {supplier['name']} ({supplier['location']}) - {supplier['tier']} tier, {supplier['specialties']}")
+        
+        for country, suppliers in countries.items():
+            context_parts.append(f"{country} ({len(suppliers)} suppliers):")
+            context_parts.extend(suppliers)
+    
+    # Check for alert-related queries
+    if any(term in query_lower for term in ['alert', 'problem', 'issue', 'priority', 'urgent']):
+        alerts = RAG_KNOWLEDGE_BASE['current_alerts']
+        context_parts.append("CURRENT ALERTS:")
+        context_parts.append("High Priority:")
+        for alert in alerts['high_priority']:
+            context_parts.append(f"- {alert['supplier']}: {alert['issue']} ({alert['impact']}) → {alert['action']}")
+        context_parts.append("Medium Priority:")
+        for alert in alerts['medium_priority']:
+            context_parts.append(f"- {alert['supplier']}: {alert['issue']} ({alert['impact']}) → {alert['action']}")
+    
+    # Check for opportunity queries
+    if any(term in query_lower for term in ['opportunity', 'surplus', 'advantage', 'harvest', 'bulk']):
+        opportunities = RAG_KNOWLEDGE_BASE['current_alerts']['opportunities']
+        context_parts.append("CURRENT OPPORTUNITIES:")
+        for opp in opportunities:
+            context_parts.append(f"- {opp['supplier']}: {opp['issue']} ({opp['impact']}) → {opp['action']}")
+    
+    # Add general risk overview if no specific category detected
+    if not any(term in query_lower for term in ['agriculture', 'crop', 'climate', 'weather', 'transport', 'traffic', 'alert', 'supplier', 'list']):
+        context_parts.append("RISK OVERVIEW: Swiss Corp monitors three key risk categories:")
+        context_parts.append("1. Agriculture Risk: NDVI-based crop health monitoring")
+        context_parts.append("2. Climate Risk: Weather impact on transport and operations")
+        context_parts.append("3. Transport Risk: Real-time traffic and logistics optimization")
+        context_parts.append(f"Current Priorities: {', '.join(RAG_KNOWLEDGE_BASE['company_context']['current_priorities'])}")
+    
+    return "\n".join(context_parts)
+
+def test_rag_system():
+    """Test function to verify RAG system is working"""
+    test_queries = [
+        "What's the agriculture risk?",
+        "Show me climate conditions",
+        "Any transport delays?",
+        "Tell me about suppliers"
+    ]
+    
+    print("🧪 Testing RAG System:")
+    for query in test_queries:
+        context = get_rag_context(query)
+        print(f"\nQuery: '{query}'")
+        print(f"Context length: {len(context)} characters")
+        print(f"Context preview: {context[:100]}...")
+    print("✅ RAG system test complete")
+
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if OPENAI_AVAILABLE and OPENAI_API_KEY:
@@ -75,6 +391,7 @@ MOCK_COMPANY = {
 }
 
 MOCK_SUPPLIERS = [
+    # Switzerland (12 suppliers)
     {"id": 1, "name": "Fenaco Genossenschaft", "latitude": 46.9481, "longitude": 7.4474, "city": "Bern", "country": "Switzerland", "tier": "SURPLUS", "transport_modes": "Truck,Train"},
     {"id": 2, "name": "Alpine Farms AG", "latitude": 47.6062, "longitude": 8.1090, "city": "Thurgau", "country": "Switzerland", "tier": "RISK", "transport_modes": "Truck"},
     {"id": 3, "name": "Swiss Valley Produce", "latitude": 47.2692, "longitude": 11.4041, "city": "Innsbruck", "country": "Austria", "tier": "SURPLUS", "transport_modes": "Truck,Train"},
@@ -84,7 +401,49 @@ MOCK_SUPPLIERS = [
     {"id": 7, "name": "Lombardy Agricultural Union", "latitude": 45.4642, "longitude": 9.1900, "city": "Milan", "country": "Italy", "tier": "RISK", "transport_modes": "Truck,Train"},
     {"id": 8, "name": "Black Forest Organics", "latitude": 48.0196, "longitude": 7.8421, "city": "Freiburg", "country": "Germany", "tier": "SURPLUS", "transport_modes": "Truck"},
     {"id": 9, "name": "Alsace Premium Produce", "latitude": 48.5734, "longitude": 7.7521, "city": "Strasbourg", "country": "France", "tier": "RISK", "transport_modes": "Truck,Train"},
-    {"id": 10, "name": "Tyrolean Mountain Farms", "latitude": 47.0707, "longitude": 15.4395, "city": "Graz", "country": "Austria", "tier": "HIGHRISK", "transport_modes": "Truck"}
+    {"id": 10, "name": "Tyrolean Mountain Farms", "latitude": 47.0707, "longitude": 15.4395, "city": "Graz", "country": "Austria", "tier": "HIGHRISK", "transport_modes": "Truck"},
+    
+    # Additional Swiss suppliers
+    {"id": 11, "name": "Valais Mountain Dairy", "latitude": 46.2276, "longitude": 7.3591, "city": "Sion", "country": "Switzerland", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 12, "name": "Graubünden Organic", "latitude": 46.8182, "longitude": 9.8347, "city": "Chur", "country": "Switzerland", "tier": "STABLE", "transport_modes": "Truck"},
+    {"id": 13, "name": "Ticino Vineyards", "latitude": 46.0037, "longitude": 8.9511, "city": "Lugano", "country": "Switzerland", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 14, "name": "Jura Cheese Collective", "latitude": 47.3667, "longitude": 7.3333, "city": "Delémont", "country": "Switzerland", "tier": "STABLE", "transport_modes": "Truck"},
+    
+    # Germany (10 suppliers)
+    {"id": 15, "name": "Baden-Württemberg Farms", "latitude": 48.7758, "longitude": 9.1829, "city": "Stuttgart", "country": "Germany", "tier": "SURPLUS", "transport_modes": "Truck,Train"},
+    {"id": 16, "name": "Rhineland Produce", "latitude": 50.9375, "longitude": 6.9603, "city": "Cologne", "country": "Germany", "tier": "STABLE", "transport_modes": "Truck,Train"},
+    {"id": 17, "name": "Swabian Grain Co", "latitude": 48.3668, "longitude": 10.8986, "city": "Augsburg", "country": "Germany", "tier": "SURPLUS", "transport_modes": "Truck,Train"},
+    {"id": 18, "name": "Allgäu Dairy Union", "latitude": 47.7261, "longitude": 10.3158, "city": "Kempten", "country": "Germany", "tier": "RISK", "transport_modes": "Truck"},
+    {"id": 19, "name": "Franconian Organics", "latitude": 49.4521, "longitude": 10.9982, "city": "Nuremberg", "country": "Germany", "tier": "STABLE", "transport_modes": "Truck,Train"},
+    {"id": 20, "name": "Lake Constance Fruits", "latitude": 47.6779, "longitude": 9.1732, "city": "Konstanz", "country": "Germany", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 21, "name": "Hessian Grain Mills", "latitude": 50.1109, "longitude": 8.6821, "city": "Frankfurt", "country": "Germany", "tier": "STABLE", "transport_modes": "Truck,Train"},
+    {"id": 22, "name": "Palatinate Vineyards", "latitude": 49.3501, "longitude": 8.1067, "city": "Mannheim", "country": "Germany", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 23, "name": "Thuringian Vegetables", "latitude": 50.9848, "longitude": 11.0299, "city": "Erfurt", "country": "Germany", "tier": "RISK", "transport_modes": "Truck,Train"},
+    {"id": 24, "name": "Saxon Specialty Foods", "latitude": 51.0504, "longitude": 13.7373, "city": "Dresden", "country": "Germany", "tier": "STABLE", "transport_modes": "Truck,Train"},
+    
+    # Austria (8 suppliers)
+    {"id": 25, "name": "Salzburg Alpine Farms", "latitude": 47.8095, "longitude": 13.0550, "city": "Salzburg", "country": "Austria", "tier": "RISK", "transport_modes": "Truck"},
+    {"id": 26, "name": "Vorarlberg Dairy", "latitude": 47.5058, "longitude": 9.7471, "city": "Bregenz", "country": "Austria", "tier": "STABLE", "transport_modes": "Truck"},
+    {"id": 27, "name": "Carinthian Organics", "latitude": 46.6247, "longitude": 14.3055, "city": "Klagenfurt", "country": "Austria", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 28, "name": "Upper Austria Grains", "latitude": 48.3069, "longitude": 14.2858, "city": "Linz", "country": "Austria", "tier": "STABLE", "transport_modes": "Truck,Train"},
+    {"id": 29, "name": "Styrian Pumpkins", "latitude": 47.0707, "longitude": 15.4395, "city": "Graz", "country": "Austria", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 30, "name": "Burgenland Wines", "latitude": 47.8450, "longitude": 16.5200, "city": "Eisenstadt", "country": "Austria", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 31, "name": "Tyrol Mountain Herbs", "latitude": 47.2692, "longitude": 11.4041, "city": "Innsbruck", "country": "Austria", "tier": "RISK", "transport_modes": "Truck"},
+    {"id": 32, "name": "Lower Austria Vegetables", "latitude": 48.2082, "longitude": 16.3738, "city": "Vienna", "country": "Austria", "tier": "STABLE", "transport_modes": "Truck,Train"},
+    
+    # Italy (6 suppliers)
+    {"id": 33, "name": "Piedmont Truffles", "latitude": 45.0703, "longitude": 7.6869, "city": "Turin", "country": "Italy", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 34, "name": "Veneto Rice Fields", "latitude": 45.4408, "longitude": 12.3155, "city": "Venice", "country": "Italy", "tier": "RISK", "transport_modes": "Truck,Train"},
+    {"id": 35, "name": "Emilia-Romagna Cheese", "latitude": 44.4949, "longitude": 11.3426, "city": "Bologna", "country": "Italy", "tier": "STABLE", "transport_modes": "Truck,Train"},
+    {"id": 36, "name": "Trentino Apples", "latitude": 46.0748, "longitude": 11.1217, "city": "Trento", "country": "Italy", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 37, "name": "South Tyrol Organics", "latitude": 46.4983, "longitude": 11.3548, "city": "Bolzano", "country": "Italy", "tier": "STABLE", "transport_modes": "Truck"},
+    {"id": 38, "name": "Friuli Wines", "latitude": 45.6494, "longitude": 13.7768, "city": "Trieste", "country": "Italy", "tier": "SURPLUS", "transport_modes": "Truck"},
+    
+    # France (6 suppliers)
+    {"id": 39, "name": "Burgundy Vineyards", "latitude": 47.3220, "longitude": 5.0415, "city": "Dijon", "country": "France", "tier": "SURPLUS", "transport_modes": "Truck,Train"},
+    {"id": 40, "name": "Franche-Comté Dairy", "latitude": 47.2378, "longitude": 6.0241, "city": "Besançon", "country": "France", "tier": "STABLE", "transport_modes": "Truck"},
+    {"id": 41, "name": "Champagne Growers", "latitude": 49.2583, "longitude": 4.0317, "city": "Reims", "country": "France", "tier": "SURPLUS", "transport_modes": "Truck,Train"},
+    {"id": 42, "name": "Lorraine Vegetables", "latitude": 49.1193, "longitude": 6.1757, "city": "Metz", "country": "France", "tier": "RISK", "transport_modes": "Truck,Train"}
 ]
 
 MOCK_ALERTS = [
@@ -1813,8 +2172,71 @@ app.layout = html.Div([
                     html.Div([
                         html.Div([
                             html.I(className="fas fa-robot me-2", style={"color": "#10b981"}),
-                            html.Span("Hello! I'm your Swiss Corp supply chain assistant. How can I help you today?", 
-                                     className="text-white", style={"fontSize": "0.9em"})
+                            html.Div([
+                                html.Span("Hello! I'm your Swiss Corp supply chain assistant with real-time risk data.", 
+                                         className="text-white", style={"fontSize": "0.9em"}),
+                                html.Br(),
+                                html.Small("Try these sample questions:", className="text-muted", style={"fontSize": "0.8em"}),
+                                html.Div([
+                                    # Sample prompt tiles
+                                    html.Div([
+                                        html.I(className="fas fa-exclamation-triangle me-1", style={"color": "#ef4444"}),
+                                        html.Span("Should we replace Organic Harvest Co due to drought?", 
+                                                 className="text-white", style={"fontSize": "0.75em"})
+                                    ], id="sample-prompt-1", className="sample-prompt-tile", style={
+                                        "backgroundColor": "rgba(239, 68, 68, 0.1)",
+                                        "border": "1px solid rgba(239, 68, 68, 0.3)",
+                                        "borderRadius": "6px",
+                                        "padding": "6px 8px",
+                                        "margin": "4px 0",
+                                        "cursor": "pointer",
+                                        "transition": "all 0.2s ease",
+                                        "color": "white"
+                                    }),
+                                    html.Div([
+                                        html.I(className="fas fa-truck me-1", style={"color": "#3b82f6"}),
+                                        html.Span("Which suppliers have the best transport reliability?", 
+                                                 className="text-white", style={"fontSize": "0.75em"})
+                                    ], id="sample-prompt-2", className="sample-prompt-tile", style={
+                                        "backgroundColor": "rgba(59, 130, 246, 0.1)",
+                                        "border": "1px solid rgba(59, 130, 246, 0.3)",
+                                        "borderRadius": "6px",
+                                        "padding": "6px 8px",
+                                        "margin": "4px 0",
+                                        "cursor": "pointer",
+                                        "transition": "all 0.2s ease",
+                                        "color": "white"
+                                    }),
+                                    html.Div([
+                                        html.I(className="fas fa-clock me-1", style={"color": "#f59e0b"}),
+                                        html.Span("What's causing delays from Bavarian Grain Collective?", 
+                                                 className="text-white", style={"fontSize": "0.75em"})
+                                    ], id="sample-prompt-3", className="sample-prompt-tile", style={
+                                        "backgroundColor": "rgba(245, 158, 11, 0.1)",
+                                        "border": "1px solid rgba(245, 158, 11, 0.3)",
+                                        "borderRadius": "6px",
+                                        "padding": "6px 8px",
+                                        "margin": "4px 0",
+                                        "cursor": "pointer",
+                                        "transition": "all 0.2s ease",
+                                        "color": "white"
+                                    }),
+                                    html.Div([
+                                        html.I(className="fas fa-list me-1", style={"color": "#10b981"}),
+                                        html.Span("List all 42 suppliers with their risk status", 
+                                                 className="text-white", style={"fontSize": "0.75em"})
+                                    ], id="sample-prompt-4", className="sample-prompt-tile", style={
+                                        "backgroundColor": "rgba(16, 185, 129, 0.1)",
+                                        "border": "1px solid rgba(16, 185, 129, 0.3)",
+                                        "borderRadius": "6px",
+                                        "padding": "6px 8px",
+                                        "margin": "4px 0",
+                                        "cursor": "pointer",
+                                        "transition": "all 0.2s ease",
+                                        "color": "white"
+                                    })
+                                ], style={"marginTop": "8px"})
+                            ])
                         ], className="d-flex align-items-start")
                     ], className="mb-2 p-2", style={
                         "backgroundColor": "rgba(16, 185, 129, 0.1)",
@@ -1836,7 +2258,7 @@ app.layout = html.Div([
                     dbc.InputGroup([
                         dbc.Input(
                             id="chat-input",
-                            placeholder="Ask about your supply chain...",
+                            placeholder="Ask about agriculture risk, climate conditions, transport delays, or specific suppliers...",
                             style={
                                 "backgroundColor": "rgba(255, 255, 255, 0.1)",
                                 "border": "1px solid rgba(255, 255, 255, 0.2)",
@@ -1975,6 +2397,32 @@ def toggle_chat(chat_clicks, close_clicks, is_open):
     
     return is_open
 
+# Sample prompt click handlers
+@app.callback(
+    Output("chat-input", "value", allow_duplicate=True),
+    [Input("sample-prompt-1", "n_clicks"),
+     Input("sample-prompt-2", "n_clicks"), 
+     Input("sample-prompt-3", "n_clicks"),
+     Input("sample-prompt-4", "n_clicks")],
+    prevent_initial_call=True
+)
+def handle_sample_prompt_clicks(prompt1_clicks, prompt2_clicks, prompt3_clicks, prompt4_clicks):
+    """Handle clicks on sample prompt tiles."""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return ""
+    
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
+    sample_prompts = {
+        "sample-prompt-1": "Should we replace Organic Harvest Co due to drought?",
+        "sample-prompt-2": "Which suppliers have the best transport reliability?", 
+        "sample-prompt-3": "What's causing delays from Bavarian Grain Collective?",
+        "sample-prompt-4": "List all 42 suppliers with their risk status"
+    }
+    
+    return sample_prompts.get(button_id, "")
+
 @app.callback(
     Output("chat-messages", "children"),
     Output("chat-input", "value"),
@@ -2019,7 +2467,7 @@ def handle_chat_message(send_clicks, input_submit, message, current_messages):
     return updated_messages, ""
 
 def generate_ai_response(user_message: str) -> str:
-    """Generate AI response using OpenAI GPT."""
+    """Generate AI response using OpenAI GPT with RAG context."""
     if not openai_client:
         # Provide helpful setup instructions
         if not OPENAI_AVAILABLE:
@@ -2029,19 +2477,24 @@ def generate_ai_response(user_message: str) -> str:
         else:
             return "⚠️ AI assistant is not available. Please check OpenAI configuration."
     
-    # Swiss Corp supply chain context
-    system_context = """You are an AI assistant for Swiss Corp, a supply chain management company. 
+    # Get relevant RAG context based on user query
+    rag_context = get_rag_context(user_message)
+    
+    # Enhanced system context with RAG data
+    system_context = f"""You are an AI assistant for Swiss Corp, a supply chain management company specializing in food distribution across Central Europe.
+
+REAL-TIME CONTEXT (from RAG system):
+{rag_context}
 
 CURRENT SUPPLY CHAIN STATUS:
 - Company: Swiss Corp (HQ in Zurich, Switzerland)
-- Active Suppliers: 10 suppliers across Central Europe
-- High-risk suppliers: Organic Harvest Co (Lucerne), Tyrolean Mountain Farms (Graz)
+- Active Suppliers: 42 suppliers across Central Europe (Switzerland: 14, Germany: 10, Austria: 8, Italy: 6, France: 6)
+- Risk Monitoring: Agriculture (NDVI), Climate (Weather), Transport (Traffic)
 - Current alerts: 7 total (2 high-risk, 3 medium-risk, 2 surplus opportunities)
-- Crops: soybeans, potatoes, rice, dairy, grapes, wine grapes, corn
-- Transport: Truck and train routes, 2-3 day average delivery
-- Climate issues: Drought in Lucerne affecting soybeans, heavy rainfall in Lombardy affecting rice
+- Crops: soybeans, potatoes, rice, dairy, grapes, wine grapes, corn, organic produce, herbs, specialty items
+- Transport modes: Truck and train routes, 2-3 day average delivery
 
-SUPPLIERS:
+SUPPLIERS WITH RISK STATUS:
 1. Fenaco Genossenschaft (Bern, Switzerland) - SURPLUS - Truck,Train
 2. Alpine Farms AG (Thurgau, Switzerland) - RISK - Truck  
 3. Swiss Valley Produce (Innsbruck, Austria) - SURPLUS - Truck,Train
@@ -2062,7 +2515,7 @@ ACTIVE ALERTS:
 - Alsace wine grape surplus available
 - Excellent corn harvest with 500t additional capacity
 
-Provide helpful, specific advice about supply chain management, risk mitigation, and operational optimization. Keep responses concise and actionable."""
+Use the real-time RAG context to provide specific, data-driven advice about supply chain management, risk mitigation, and operational optimization. Reference actual NDVI values, weather conditions, and traffic data when relevant. Keep responses concise and actionable."""
 
     try:
         response = openai_client.chat.completions.create(
@@ -2071,7 +2524,7 @@ Provide helpful, specific advice about supply chain management, risk mitigation,
                 {"role": "system", "content": system_context},
                 {"role": "user", "content": user_message}
             ],
-            max_tokens=300,
+            max_tokens=400,  # Increased for more detailed responses with RAG context
             temperature=0.7
         )
         
@@ -2080,32 +2533,52 @@ Provide helpful, specific advice about supply chain management, risk mitigation,
     except Exception as e:
         print(f"OpenAI API error: {e}")
         # Fallback to local responses if OpenAI fails
-        return get_fallback_response(user_message)
+        return get_fallback_response_with_rag(user_message)
 
-def get_fallback_response(user_message: str) -> str:
-    """Provide intelligent fallback responses when OpenAI is not available."""
+def get_fallback_response_with_rag(user_message: str) -> str:
+    """Provide intelligent fallback responses with RAG context when OpenAI is not available."""
     message_lower = user_message.lower()
+    rag_context = get_rag_context(user_message)
     
-    if any(word in message_lower for word in ["supplier", "suppliers"]):
-        return "📊 **Supplier Overview**: You have 10 active suppliers across Central Europe. **High-risk suppliers**: Organic Harvest Co (Lucerne) and Tyrolean Mountain Farms (Graz) due to drought and alpine weather. **Surplus suppliers**: Fenaco (Bern), Swiss Valley (Innsbruck), Bavarian Grain (Munich). Would you like details on any specific supplier?"
+    if any(word in message_lower for word in ["agriculture", "crop", "ndvi", "farm", "harvest"]):
+        ag_data = RAG_KNOWLEDGE_BASE['agriculture_risk']
+        response = "🌱 **Agriculture Risk Analysis (NDVI-based)**:\n"
+        response += f"**Healthy**: Fenaco (NDVI: 0.75) - {ag_data['recommendations']['healthy']}\n"
+        response += f"**Stressed**: Alpine Farms (NDVI: 0.45), Tyrolean Farms (NDVI: 0.35) - {ag_data['recommendations']['stressed']}\n"
+        response += f"**Critical**: Organic Harvest (NDVI: 0.25) - {ag_data['recommendations']['critical']}"
+        return response
+    
+    elif any(word in message_lower for word in ["climate", "weather", "temperature", "rain"]):
+        climate_data = RAG_KNOWLEDGE_BASE['climate_risk']
+        response = "🌦️ **Climate Risk Assessment**:\n"
+        response += "**Low Risk**: Fenaco (15°C, 2.5mm) - Normal operations\n"
+        response += "**Medium Risk**: Alpine Farms (8°C, 15.2mm), Alsace (12°C, 8.7mm) - Some delays expected\n"
+        response += "**High Risk**: Lombardy (22°C, 45.8mm) - Heavy rainfall disrupting logistics"
+        return response
+    
+    elif any(word in message_lower for word in ["transport", "traffic", "logistics", "delivery"]):
+        transport_data = RAG_KNOWLEDGE_BASE['transport_risk']
+        response = "🚛 **Transport Risk Status**:\n"
+        response += "**Light Traffic**: Fenaco (+3 min delay) - Optimal conditions\n"
+        response += "**Moderate Traffic**: Alpine Farms (+12 min), Lombardy (+18 min) - Minor delays\n"
+        response += "**Heavy Traffic**: Bavarian Grain (+25 min) - Significant delays on Munich-Zurich route"
+        return response
+    
+    elif any(word in message_lower for word in ["supplier", "suppliers"]):
+        return "📊 **Supplier Overview with Risk Data**: You have 10 active suppliers across Central Europe. **Agriculture Risk**: Organic Harvest (NDVI: 0.25, Critical). **Climate Risk**: Lombardy (High, 45.8mm rainfall). **Transport Risk**: Bavarian Grain (Heavy traffic, +25 min). Use the risk dashboards for detailed analysis."
     
     elif any(word in message_lower for word in ["alert", "alerts", "risk"]):
-        return "🚨 **Active Alerts (7 total)**: **HIGH RISK**: Drought affecting soybeans (40% yield loss), Alpine dairy disruption. **MEDIUM RISK**: Storage issues (potatoes), Lombardy flooding (rice), Alsace transport delays. **SURPLUS**: Exceptional grape harvest (+25%), Corn surplus (500t available). Priority: Address drought and dairy issues first."
-    
-    elif any(word in message_lower for word in ["weather", "climate"]):
-        return "🌦️ **Climate Impact**: **Drought** in Lucerne affecting soybean harvest (40% reduction). **Heavy rainfall** in Lombardy impacting rice production. **Recommendation**: Activate alternative suppliers - Bavarian Grain (Munich) for soybeans, Swiss Valley (Innsbruck) for rice alternatives. Monitor weather forecasts for next 2 weeks."
-    
-    elif any(word in message_lower for word in ["transport", "logistics", "delivery"]):
-        return "🚛 **Logistics Status**: Average delivery time: 2-3 days. **Routes**: Munich-Zurich (truck/train), Milan-Zurich (minor weather delays), Geneva-Zurich (optimal). **Recommendation**: Use train routes during weather disruptions. Bavarian Grain and Black Forest Organics have best transport reliability."
-    
-    elif any(word in message_lower for word in ["crop", "crops", "harvest"]):
-        return "🌾 **Crop Portfolio**: **At Risk**: Soybeans (drought), Rice (flooding), Dairy (alpine weather). **Surplus**: Grapes (+25% harvest), Wine grapes (premium available), Corn (+500t capacity). **Stable**: Potatoes (storage issues resolved). Focus on securing alternative soybean sources immediately."
+        return "🚨 **Multi-Risk Alert Summary**: **Agriculture**: Critical NDVI at Organic Harvest (0.25). **Climate**: High rainfall risk at Lombardy (45.8mm). **Transport**: Heavy traffic delays from Munich (+25 min). **Recommendation**: Diversify sourcing and monitor real-time conditions."
     
     elif any(word in message_lower for word in ["recommendation", "advice", "help"]):
-        return "💡 **Priority Actions**: 1) **Immediate**: Source soybeans from Bavarian Grain to offset Lucerne drought. 2) **This week**: Secure dairy alternatives for Tyrolean disruption. 3) **Opportunity**: Lock in surplus grape pricing from Rhône Valley. 4) **Monitor**: Lombardy flooding impact on rice supply. Need specific help with any of these?"
+        return "💡 **RAG-Enhanced Recommendations**: 1) **Agriculture**: Replace Organic Harvest (NDVI: 0.25) with Fenaco (NDVI: 0.75). 2) **Climate**: Avoid Lombardy routes during heavy rainfall (45.8mm). 3) **Transport**: Use alternative routes to bypass Munich traffic (+25 min delays). Real-time data available in risk dashboards."
     
     else:
-        return f"🤖 **Swiss Corp Assistant**: I understand you're asking about '{user_message}'. I can help with: **Suppliers** (risk analysis, alternatives), **Alerts** (prioritization, actions), **Weather** (impact assessment), **Logistics** (route optimization), **Crops** (harvest status, alternatives). What would you like to explore? *(Note: For enhanced AI responses, set up OpenAI integration)*"
+        return f"🤖 **Swiss Corp RAG Assistant**: I can provide data-driven insights about '{user_message}' using our risk monitoring system. Available data: **Agriculture** (NDVI crop health), **Climate** (weather impacts), **Transport** (traffic conditions). Ask about specific suppliers or risk categories for detailed analysis. *(Note: Enhanced AI responses available with OpenAI integration)*"
+
+def get_fallback_response(user_message: str) -> str:
+    """Legacy fallback function - redirects to RAG-enhanced version."""
+    return get_fallback_response_with_rag(user_message)
 
 
 
