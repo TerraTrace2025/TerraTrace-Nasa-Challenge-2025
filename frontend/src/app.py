@@ -244,13 +244,54 @@ SEVERITY_ORDER = {
     "SURPLUS": 0,
 }
 
-def marker_for_supplier(s, selected_supplier_id=None):
+def marker_for_supplier(s, selected_supplier_id=None, show_satellite=False):
     is_selected = s.get("SupplierId") == selected_supplier_id
-    color = "#2563eb" if is_selected else TIER_COLOR.get((s.get("CurrentTier") or "").upper(), "#3b82f6")
     radius = 14 if is_selected else 10
     weight = 3 if is_selected else 1
+    
+    print(f"marker_for_supplier called: show_satellite={show_satellite}, supplier={s.get('SupplierId')}")
+    
+    # Color logic based on satellite data toggle
+    if show_satellite:
+        # Use NDVI-based colors when satellite data is enabled
+        ndvi_value = get_mock_ndvi_for_supplier(s.get("SupplierId"))
+        print(f"Supplier {s.get('SupplierId')} ({s.get('Name')}): NDVI = {ndvi_value}")
+        
+        if ndvi_value > 0.7:
+            color = "#22c55e"  # Healthy green
+            print(f"  -> Healthy green")
+        elif ndvi_value > 0.5:
+            color = "#f59e0b"  # Moderate yellow
+            print(f"  -> Moderate yellow")
+        elif ndvi_value > 0.3:
+            color = "#f97316"  # Stressed orange
+            print(f"  -> Stressed orange")
+        else:
+            color = "#ef4444"  # Critical red
+            print(f"  -> Critical red")
+        
+        tooltip_text = f"{s.get('Name') or 'Supplier'} - NDVI: {ndvi_value:.3f} ({get_ndvi_status(ndvi_value)})"
+        popup_content = [
+            html.B(s.get("Name") or "Supplier"), html.Br(),
+            html.Div(s.get("Location","")), html.Br(),
+            html.Div(f"NDVI: {ndvi_value:.3f}"),
+            html.Div(f"Status: {get_ndvi_status(ndvi_value)}")
+        ]
+    else:
+        # Default: all farmers are green (healthy)
+        color = "#2563eb" if is_selected else "#22c55e"  # Blue if selected, green otherwise
+        tooltip_text = f"{s.get('Name') or 'Supplier'} - {s.get('_raw').get('city','')}"
+        popup_content = [
+            html.B(s.get("Name") or "Supplier"), html.Br(),
+            html.Div(s.get("Location","")),
+            html.Div(f"Tier: {s.get('CurrentTier','?')}")
+        ]
 
+    # Create unique key to force re-rendering when colors change
+    marker_key = f"supplier-{s.get('SupplierId')}-{'satellite' if show_satellite else 'default'}"
+    
     return dl.CircleMarker(
+        id=marker_key,
         center=(s.get("Lat") or 0, s.get("Lon") or 0),
         radius=radius,
         color=color,
@@ -258,12 +299,8 @@ def marker_for_supplier(s, selected_supplier_id=None):
         fill=True,
         fillOpacity=0.7 if is_selected else 0.5,
         children=[
-            dl.Tooltip(f"{s.get('Name') or 'Supplier'} - {s.get('_raw').get('city','')}"),
-            dl.Popup([
-                html.B(s.get("Name") or "Supplier"), html.Br(),
-                html.Div(s.get("Location","")),
-                html.Div(f"Tier: {s.get('CurrentTier','?')}")
-            ])
+            dl.Tooltip(tooltip_text),
+            dl.Popup(popup_content)
         ]
     )
 
@@ -382,13 +419,18 @@ def stock_item_card(s: Dict[str, Any]) -> dbc.ListGroupItem:
     )
 
 
-def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None):
+def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None, show_satellite=False):
     # Base markers
     marker_children = []
     comp_marker = marker_for_company(company)
     if comp_marker:
         marker_children.append(comp_marker)
-    marker_children.extend([marker_for_supplier(s, selected_supplier_id) for s in suppliers if s.get("Lat") and s.get("Lon")])
+    
+    # Enhanced supplier markers with NDVI data
+    for s in suppliers:
+        if s.get("Lat") and s.get("Lon"):
+            marker = marker_for_supplier(s, selected_supplier_id, show_satellite)
+            marker_children.append(marker)
 
     # Routes with proper OSRM routing
     route_layers = build_supplier_routes(company, suppliers)
@@ -422,17 +464,81 @@ def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: 
             )
         )
 
+    # Base layers
     children = [
         dl.TileLayer(
             url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        ),
+        )
+    ]
+    
+    # Add satellite overlay if enabled
+    if show_satellite:
+        satellite_layer = create_satellite_overlay()
+        if satellite_layer:
+            children.append(satellite_layer)
+    
+    # Add other layers
+    children.extend([
         dl.LayerGroup(alert_overlays, id="alert-overlays"),
         dl.LayerGroup(marker_children, id="entity-markers"),
         dl.LayerGroup(route_layers, id="route-layers"),
-    ]
+    ])
+    
     # Center on Zurich with appropriate zoom level
-    return dl.Map(center=(47.3769, 8.5417), zoom=8, children=children, style={"height": "calc(100vh - 80px)", "width": "100%"})
+    # Keep map ID stable to prevent recentering
+    return dl.Map(
+        id="main-map",
+        center=(47.3769, 8.5417), 
+        zoom=8, 
+        children=children, 
+        style={"height": "calc(100vh - 80px)", "width": "100%"}
+    )
+
+
+
+def create_satellite_overlay():
+    """Create satellite tile overlay for the region"""
+    try:
+        # This would fetch the tile URL from Google Earth Engine
+        # For now, return a placeholder that could be replaced with actual satellite tiles
+        return dl.TileLayer(
+            url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",  # Google Satellite as placeholder
+            attribution='Satellite imagery',
+            opacity=0.7,
+            id="satellite-overlay"
+        )
+    except Exception as e:
+        print(f"Error creating satellite overlay: {e}")
+        return None
+
+def get_mock_ndvi_for_supplier(supplier_id: int) -> float:
+    """Mock NDVI data - replace with actual API call"""
+    # Simulate different NDVI values based on supplier risk levels
+    ndvi_values = {
+        1: 0.75,  # Fenaco - Surplus
+        2: 0.45,  # Alpine - Risk  
+        3: 0.80,  # Swiss Valley - Surplus
+        4: 0.25,  # Organic Harvest - High Risk
+        5: 0.85,  # Bavarian - Surplus
+        6: 0.78,  # Rhône Valley - Surplus
+        7: 0.50,  # Lombardy - Risk
+        8: 0.82,  # Black Forest - Surplus
+        9: 0.48,  # Alsace - Risk
+        10: 0.30  # Tyrolean - High Risk
+    }
+    return ndvi_values.get(supplier_id, 0.6)
+
+def get_ndvi_status(ndvi: float) -> str:
+    """Convert NDVI value to status text"""
+    if ndvi > 0.7:
+        return "Healthy Vegetation"
+    elif ndvi > 0.5:
+        return "Moderate Vegetation"
+    elif ndvi > 0.3:
+        return "Stressed Vegetation"
+    else:
+        return "Critical Vegetation"
 
 def recommendations_panel(recs: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
     items = []
@@ -1596,10 +1702,13 @@ def create_summary_metrics():
     Output("map-container", "children"),
     Output("alerts-list", "children"),
     Input("token-store", "data"),
-    Input("selected-supplier-id", "data")
+    Input("selected-supplier-id", "data"),
+    Input("climate-toggle", "value")
 )
-def refresh_dashboard(token, selected_supplier_id):
+def refresh_dashboard(token, selected_supplier_id, show_climate_data):
     """Refresh dashboard with elegant full-screen map and alerts."""
+    
+    print(f"refresh_dashboard called: show_climate_data={show_climate_data}")
     
     # Use mock data for Swiss Corp - no login required
     company = MOCK_COMPANY
@@ -1628,8 +1737,8 @@ def refresh_dashboard(token, selected_supplier_id):
         "Country": company["country"]
     }
 
-    # Build elegant full-screen map with proper routing
-    map_component = build_map(normalized_company, normalized_suppliers, alerts, selected_supplier_id)
+    # Build elegant full-screen map with proper routing and satellite data
+    map_component = build_map(normalized_company, normalized_suppliers, alerts, selected_supplier_id, show_climate_data)
     
     # Build alerts list
     normalized_alerts = []
@@ -1654,6 +1763,8 @@ def refresh_dashboard(token, selected_supplier_id):
     alert_cards = [alert_card(a, suppliers_index) for a in sorted_alerts]
     
     return map_component, alert_cards
+
+
 
 
 if __name__ == "__main__":
