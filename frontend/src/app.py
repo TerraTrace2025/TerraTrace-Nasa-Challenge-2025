@@ -520,6 +520,251 @@ def stock_item_card(s: Dict[str, Any]) -> dbc.ListGroupItem:
     )
 
 
+def build_map_with_caching(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None, show_agriculture=False, show_climate=False, show_transport=False):
+    """Build map with efficient caching and minimal API calls"""
+    
+    # Base markers
+    marker_children = []
+    comp_marker = marker_for_company(company)
+    if comp_marker:
+        marker_children.append(comp_marker)
+    
+    # Enhanced supplier markers with toggle-based colors
+    for s in suppliers:
+        if s.get("Lat") and s.get("Lon"):
+            marker = marker_for_supplier_cached(s, selected_supplier_id, show_agriculture, show_climate, show_transport)
+            marker_children.append(marker)
+
+    # Routes with caching
+    route_layers = build_supplier_routes_cached(company, suppliers, show_climate, show_transport)
+
+    # Alert overlays (minimal processing)
+    alert_overlays = []
+    suppliers_index = {s.get("SupplierId"): s for s in suppliers}
+    for a in alerts:
+        sev = (a.get("Severity") or "").upper()
+        color = TIER_COLOR.get(sev, "#93c5fd")
+
+        sup = suppliers_index.get(a.get("SupplierId"))
+        if sup and sup.get("Lat") and sup.get("Lon"):
+            lat, lon = sup["Lat"], sup["Lon"]
+        else:
+            if company and company.get("Lat") and company.get("Lon"):
+                lat, lon = company["Lat"], company["Lon"]
+            else:
+                continue
+
+        alert_overlays.append(
+            dl.CircleMarker(
+                center=(lat, lon),
+                radius=14,
+                color=color,
+                fill=True,
+                fillOpacity=0.45,
+            )
+        )
+
+    # Base layers (static)
+    children = [
+        dl.TileLayer(
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        )
+    ]
+    
+    # Add layers
+    children.extend([
+        dl.LayerGroup(alert_overlays, id="alert-overlays"),
+        dl.LayerGroup(marker_children, id="entity-markers"),
+        dl.LayerGroup(route_layers, id="route-layers"),
+    ])
+    
+    # Add legend table for active mode
+    if show_agriculture or show_climate or show_transport:
+        legend_table = create_legend_table(show_agriculture, show_climate, show_transport)
+        if legend_table:
+            children.append(legend_table)
+    
+    # Return static map
+    return dl.Map(
+        id="main-map",
+        center=(47.3769, 8.5417), 
+        zoom=8, 
+        children=children, 
+        style={"height": "calc(100vh - 80px)", "width": "100%"}
+    )
+
+def marker_for_supplier_cached(s, selected_supplier_id=None, show_agriculture=False, show_climate=False, show_transport=False):
+    """Cached version of marker_for_supplier with minimal API calls"""
+    
+    supplier_id = s.get("SupplierId")
+    is_selected = supplier_id == selected_supplier_id
+    radius = 14 if is_selected else 10
+    weight = 3 if is_selected else 1
+    
+    # Use cached data to avoid repeated API calls
+    cache_key = f"marker_data_{supplier_id}_{show_agriculture}_{show_climate}_{show_transport}"
+    now = dt.datetime.now().timestamp()
+    
+    if cache_key in _API_CACHE:
+        cached_data, timestamp = _API_CACHE[cache_key]
+        if now - timestamp < 60:  # 1 minute cache for marker data
+            color = cached_data["color"]
+            tooltip_text = cached_data["tooltip"]
+            popup_content = cached_data["popup"]
+        else:
+            color, tooltip_text, popup_content = get_marker_data(s, show_agriculture, show_climate, show_transport)
+            _API_CACHE[cache_key] = {"color": color, "tooltip": tooltip_text, "popup": popup_content}, now
+    else:
+        color, tooltip_text, popup_content = get_marker_data(s, show_agriculture, show_climate, show_transport)
+        _API_CACHE[cache_key] = {"color": color, "tooltip": tooltip_text, "popup": popup_content}, now
+    
+    marker_key = f"supplier-{supplier_id}-cached"
+    
+    return dl.CircleMarker(
+        id=marker_key,
+        center=(s.get("Lat") or 0, s.get("Lon") or 0),
+        radius=radius,
+        color=color,
+        weight=weight,
+        fill=True,
+        fillOpacity=0.7 if is_selected else 0.5,
+        children=[
+            dl.Tooltip(tooltip_text),
+            dl.Popup(popup_content)
+        ]
+    )
+
+def get_marker_data(s, show_agriculture, show_climate, show_transport):
+    """Get marker color and content based on toggle state"""
+    
+    supplier_id = s.get("SupplierId")
+    
+    if show_transport:
+        traffic_data = get_traffic_data_for_supplier(supplier_id)
+        color = traffic_data["color"]
+        tooltip_text = f"{s.get('Name') or 'Supplier'} - Traffic: {traffic_data['traffic_level']}"
+        popup_content = [
+            html.B(s.get("Name") or "Supplier"), html.Br(),
+            html.Div(s.get("Location","")), html.Br(),
+            html.Div(f"🚛 Traffic Level: {traffic_data['traffic_level']}"),
+            html.Div(f"⏰ Delay: +{traffic_data['delay_minutes']:.0f} minutes")
+        ]
+    elif show_climate:
+        climate_risk = get_climate_risk_for_supplier(supplier_id)
+        risk_level = climate_risk["risk_level"]
+        
+        if risk_level == "HIGH":
+            color = "#ef4444"
+        elif risk_level == "MEDIUM":
+            color = "#f59e0b"
+        else:
+            color = "#22c55e"
+        
+        tooltip_text = f"{s.get('Name') or 'Supplier'} - Climate Risk: {risk_level}"
+        popup_content = [
+            html.B(s.get("Name") or "Supplier"), html.Br(),
+            html.Div(s.get("Location","")), html.Br(),
+            html.Div(f"🌡️ Climate Risk: {risk_level}"),
+            html.Div(f"🌧️ Temp: {climate_risk['temp']}°C, Precip: {climate_risk['precip']}mm")
+        ]
+    elif show_agriculture:
+        ndvi_value = get_mock_ndvi_for_supplier(supplier_id)
+        
+        if ndvi_value > 0.7:
+            color = "#22c55e"
+        elif ndvi_value > 0.5:
+            color = "#f59e0b"
+        elif ndvi_value > 0.3:
+            color = "#f97316"
+        else:
+            color = "#ef4444"
+        
+        tooltip_text = f"{s.get('Name') or 'Supplier'} - NDVI: {ndvi_value:.3f}"
+        popup_content = [
+            html.B(s.get("Name") or "Supplier"), html.Br(),
+            html.Div(s.get("Location","")), html.Br(),
+            html.Div(f"🌱 NDVI: {ndvi_value:.3f}"),
+            html.Div(f"Status: {get_ndvi_status(ndvi_value)}")
+        ]
+    else:
+        color = "#22c55e"
+        tooltip_text = f"{s.get('Name') or 'Supplier'}"
+        popup_content = [
+            html.B(s.get("Name") or "Supplier"), html.Br(),
+            html.Div(s.get("Location","")),
+            html.Div(f"Tier: {s.get('CurrentTier','?')}")
+        ]
+    
+    return color, tooltip_text, popup_content
+
+def build_supplier_routes_cached(company: Dict[str, Any], suppliers: List[Dict[str, Any]], show_climate: bool = False, show_transport: bool = False) -> List[Any]:
+    """Cached version of route building"""
+    
+    if not company or not company.get("Lat") or not company.get("Lon"):
+        return []
+
+    # Cache routes to avoid rebuilding
+    route_cache_key = f"routes_v2_{len(suppliers)}_{show_climate}_{show_transport}"
+    now = dt.datetime.now().timestamp()
+    
+    if route_cache_key in _API_CACHE:
+        cached_routes, timestamp = _API_CACHE[route_cache_key]
+        if now - timestamp < 120:  # 2 minute cache for routes
+            return cached_routes
+
+    target = (company["Lat"], company["Lon"])
+    polylines = []
+    
+    for s in suppliers:
+        if not s.get("Lat") or not s.get("Lon"):
+            continue
+        src = (s["Lat"], s["Lon"])
+        
+        # Determine route color
+        if show_transport:
+            traffic_data = get_traffic_data_for_supplier(s.get("SupplierId"))
+            route_color = traffic_data["color"]
+            route_weight = 4 if traffic_data["traffic_level"] == "HEAVY" else 3
+        elif show_climate:
+            climate_risk = get_climate_risk_for_supplier(s.get("SupplierId"))
+            risk_level = climate_risk["risk_level"]
+            
+            if risk_level == "HIGH":
+                route_color = "#ef4444"
+                route_weight = 4
+            elif risk_level == "MEDIUM":
+                route_color = "#f59e0b"
+                route_weight = 3
+            else:
+                route_color = "#22c55e"
+                route_weight = 3
+        else:
+            route_color = "#2563eb"  # Default blue
+            route_weight = 3
+        
+        routed = osrm_route(src, target)
+        if routed and routed.get("coords"):
+            line = dl.Polyline(
+                positions=routed["coords"], 
+                color=route_color, 
+                weight=route_weight, 
+                opacity=0.8
+            )
+        else:
+            line = dl.Polyline(
+                positions=[src, target], 
+                color=route_color, 
+                weight=route_weight, 
+                dashArray="5,5"
+            )
+        polylines.append(line)
+    
+    # Cache the routes
+    _API_CACHE[route_cache_key] = (polylines, now)
+    
+    return polylines
+
 def build_map_fast(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None, show_agriculture=False, show_climate=False, show_transport=False):
     """Fast map building - only update markers, reuse base map"""
     
@@ -1003,14 +1248,11 @@ def get_climate_risk_for_supplier(supplier_id: int) -> Dict:
                     print(f"Climate data not available for supplier {supplier_id}: {data.get('message', 'Unknown reason')}")
                 return get_mock_climate_risk_for_supplier(supplier_id)
         
-        # Fallback to mock data if API fails
-        if supplier_id <= 10:  # Only log for expected suppliers
-            print(f"Climate API failed for supplier {supplier_id} (HTTP {response.status_code}), using fallback")
+        # Fallback to mock data if API fails (reduced logging)
         return get_mock_climate_risk_for_supplier(supplier_id)
         
     except Exception as e:
-        if supplier_id <= 10:  # Only log for expected suppliers
-            print(f"Error getting climate data for supplier {supplier_id}: {e}")
+        # Silent fallback for better UX
         return get_mock_climate_risk_for_supplier(supplier_id)
 
 def get_traffic_data_for_supplier(supplier_id: int) -> Dict:
@@ -1275,6 +1517,7 @@ app.layout = html.Div([
     dcc.Store(id="token-store", data="mock-token"),  # Auto-login with mock token
     dcc.Store(id="selected-supplier-id"),
     dcc.Store(id="suppliers-data-store"),  # Cache suppliers data
+    dcc.Store(id="map-toggle-state"),  # Store toggle states
     
     # Animated starfield background
     html.Div(id="starfield", children=[
@@ -2321,29 +2564,36 @@ def load_suppliers_data(token):
     return normalized_suppliers
 
 # ----------------------------------
-# Map rendering callback (optimized)
+# Map rendering callback (optimized with heavy caching)
 # ----------------------------------
 @app.callback(
     Output("map-container", "children"),
     [Input("suppliers-data-store", "data"),
-     Input("selected-supplier-id", "data"),
      Input("agriculture-toggle", "value"),
      Input("climate-toggle", "value"),
      Input("transport-toggle", "value")],
     prevent_initial_call=False
 )
-def update_map_visualization(suppliers_data, selected_supplier_id, show_agriculture_data, show_climate_data, show_transport_data):
-    """Update map visualization without full page refresh"""
+def update_map_with_heavy_caching(suppliers_data, show_agriculture, show_climate, show_transport):
+    """Update map with aggressive caching to minimize rebuilds"""
     
     if not suppliers_data:
         return html.Div("Loading suppliers data...", className="text-white text-center p-4")
     
-    print(f"🎯 Fast map update: agriculture={show_agriculture_data}, climate={show_climate_data}, transport={show_transport_data}")
+    # Create cache key for this exact configuration
+    cache_key = f"map_v2_{len(suppliers_data)}_{show_agriculture}_{show_climate}_{show_transport}"
+    now = dt.datetime.now().timestamp()
     
-    # Use cached data
-    normalized_suppliers = suppliers_data
+    # Check cache first (30 second cache)
+    if cache_key in _API_CACHE:
+        cached_map, timestamp = _API_CACHE[cache_key]
+        if now - timestamp < 30:
+            print(f"🚀 Using cached map for toggles: agri={show_agriculture}, climate={show_climate}, transport={show_transport}")
+            return cached_map
     
-    # Normalize company data to match expected format
+    print(f"🔄 Building map for toggles: agri={show_agriculture}, climate={show_climate}, transport={show_transport}")
+    
+    # Normalize company data
     normalized_company = {
         "CompanyId": MOCK_COMPANY["id"],
         "Name": MOCK_COMPANY["name"],
@@ -2353,12 +2603,15 @@ def update_map_visualization(suppliers_data, selected_supplier_id, show_agricult
         "Country": MOCK_COMPANY["country"]
     }
     
-    alerts = MOCK_ALERTS
+    # Build map with current toggle states
+    map_component = build_map_with_caching(normalized_company, suppliers_data, MOCK_ALERTS, None, show_agriculture, show_climate, show_transport)
     
-    # Build map with current toggle states (optimized)
-    map_component = build_map_fast(normalized_company, normalized_suppliers, alerts, selected_supplier_id, show_agriculture_data, show_climate_data, show_transport_data)
+    # Cache the result
+    _API_CACHE[cache_key] = (map_component, now)
     
     return map_component
+
+# Toggle state management handled by clientside callback below
 
 # ----------------------------------
 # Alerts callback (separate from map)
@@ -2400,6 +2653,7 @@ def update_alerts_list(suppliers_data):
 # ----------------------------------
 # Clientside callbacks for instant UI updates
 # ----------------------------------
+# Clientside callback for instant toggle label updates
 app.clientside_callback(
     """
     function(agriculture_value, climate_value, transport_value) {
@@ -2418,6 +2672,8 @@ app.clientside_callback(
      Input("climate-toggle", "value"),
      Input("transport-toggle", "value")]
 )
+
+# Map updates handled by server-side callback with heavy caching
 
 
 

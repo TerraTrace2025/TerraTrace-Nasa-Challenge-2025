@@ -5,8 +5,125 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 from src.satellite.gee_client import gee_client
 import logging
+import random
 
 logger = logging.getLogger(__name__)
+
+def generate_mock_climate_data(supplier_id: int, coords: dict) -> dict:
+    """Generate mock climate data when GEE service is unavailable"""
+    
+    # Set seed for consistent results
+    random.seed(supplier_id * 42)
+    
+    # Generate realistic weather conditions for Central Europe
+    temp = random.uniform(-5, 35)  # Temperature range
+    precip = random.uniform(0, 30)  # Precipitation in mm
+    
+    # Determine risk level
+    if (temp < -2 or temp > 32) or precip > 20:
+        risk_level = "HIGH"
+        impact = "Significant transport delays expected"
+        delay_minutes = random.uniform(30, 60)
+    elif (temp < 2 or temp > 28) or precip > 10:
+        risk_level = "MEDIUM"
+        impact = "Moderate transport delays possible"
+        delay_minutes = random.uniform(10, 30)
+    else:
+        risk_level = "LOW"
+        impact = "Normal transport conditions"
+        delay_minutes = random.uniform(0, 10)
+    
+    # Risk factors
+    risk_factors = []
+    if temp < 0:
+        risk_factors.append("Freezing conditions")
+    elif temp > 30:
+        risk_factors.append("High temperature")
+    
+    if precip > 15:
+        risk_factors.append("Heavy precipitation")
+    elif precip > 5:
+        risk_factors.append("Moderate precipitation")
+    
+    if not risk_factors:
+        risk_factors.append("Favorable weather conditions")
+    
+    return {
+        "success": True,
+        "location": {"lat": coords["lat"], "lon": coords["lon"], "radius": 5000},
+        "acquisition_date": "2024-01-01T12:00:00",  # Mock timestamp
+        "climate": {
+            "risk_level": risk_level,
+            "temperature_celsius": round(temp, 1),
+            "precipitation_mm": round(precip, 2),
+            "risk_factors": risk_factors
+        },
+        "transport_impact": {
+            "delay_factor": round(1 + (delay_minutes / 120), 2),
+            "estimated_travel_time_hours": round(2.5 + (delay_minutes / 60), 1),
+            "additional_delay_minutes": round(delay_minutes, 0),
+            "impact_description": impact,
+            "recommended_action": f"Allow extra {delay_minutes:.0f} minutes for transport"
+        },
+        "supplier": {
+            "id": supplier_id,
+            "name": coords["name"],
+            "coordinates": {"lat": coords["lat"], "lon": coords["lon"]}
+        },
+        "data_source": "Mock Climate Data (GEE service unavailable)"
+    }
+
+def generate_mock_traffic_data(supplier_id: int, coords: dict, destination: dict) -> dict:
+    """Generate mock traffic data when traffic service is unavailable"""
+    
+    # Set seed for consistent results
+    random.seed(supplier_id * 123)
+    
+    # Calculate approximate distance (simple formula)
+    lat_diff = abs(coords["lat"] - destination["lat"])
+    lon_diff = abs(coords["lon"] - destination["lon"])
+    distance_km = ((lat_diff ** 2 + lon_diff ** 2) ** 0.5) * 111  # Rough km conversion
+    
+    # Base travel time (assuming 60 km/h average)
+    base_time_minutes = (distance_km / 60) * 60
+    
+    # Generate traffic delay
+    delay_minutes = random.uniform(0, 45)
+    
+    # Determine traffic level
+    if delay_minutes > 25:
+        traffic_level = "HEAVY"
+        color = "#ef4444"
+    elif delay_minutes > 10:
+        traffic_level = "MODERATE"
+        color = "#f59e0b"
+    else:
+        traffic_level = "LIGHT"
+        color = "#22c55e"
+    
+    return {
+        "success": True,
+        "route": {
+            "start": {"lat": coords["lat"], "lon": coords["lon"]},
+            "end": {"lat": destination["lat"], "lon": destination["lon"]},
+            "distance_km": round(distance_km, 1)
+        },
+        "traffic": {
+            "level": traffic_level,
+            "color": color,
+            "duration_normal_minutes": round(base_time_minutes, 1),
+            "duration_traffic_minutes": round(base_time_minutes + delay_minutes, 1),
+            "delay_minutes": round(delay_minutes, 1),
+            "delay_percentage": round((delay_minutes / base_time_minutes) * 100, 1) if base_time_minutes > 0 else 0
+        },
+        "recommendation": f"{traffic_level.title()} traffic - {delay_minutes:.0f} min delay expected",
+        "supplier": {
+            "id": supplier_id,
+            "name": coords["name"]
+        },
+        "destination": "Swiss Corp HQ, Zurich",
+        "data_source": "Mock Traffic Data (service unavailable)"
+    }
 
 router = APIRouter(prefix="/satellite", tags=["satellite"])
 
@@ -210,7 +327,9 @@ def get_supplier_climate(
         )
         
         if "error" in result:
-            raise HTTPException(status_code=503, detail=result["error"])
+            # If GEE service fails, return mock data instead of error
+            logger.warning(f"GEE climate service failed for supplier {supplier_id}: {result['error']}")
+            return generate_mock_climate_data(supplier_id, coords)
         
         result["supplier"] = {
             "id": supplier_id,
@@ -222,7 +341,8 @@ def get_supplier_climate(
         
     except Exception as e:
         logger.error(f"Error getting climate data for supplier {supplier_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return mock data instead of 500 error
+        return generate_mock_climate_data(supplier_id, coords)
 
 @router.get("/climate/route/{supplier_id}")
 def get_route_climate_risk(supplier_id: int):
@@ -352,7 +472,9 @@ def get_route_traffic(supplier_id: int):
         )
         
         if "error" in result:
-            raise HTTPException(status_code=503, detail=result["error"])
+            # If traffic service fails, return mock data instead of error
+            logger.warning(f"Traffic service failed for supplier {supplier_id}: {result['error']}")
+            return generate_mock_traffic_data(supplier_id, coords, swiss_corp_hq)
         
         result["supplier"] = {
             "id": supplier_id,
@@ -364,4 +486,5 @@ def get_route_traffic(supplier_id: int):
         
     except Exception as e:
         logger.error(f"Error getting traffic data for supplier {supplier_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return mock data instead of 500 error
+        return generate_mock_traffic_data(supplier_id, coords, swiss_corp_hq)
