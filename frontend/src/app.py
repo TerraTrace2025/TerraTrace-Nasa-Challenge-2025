@@ -11,9 +11,18 @@ from dash.dependencies import ALL, MATCH
 
 import plotly.graph_objects as go
 
-from dash import Dash, html, dcc, Input, Output, State
+from dash import Dash, html, dcc, Input, Output, State, callback_context
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
+import dash
+
+# OpenAI integration
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    print("OpenAI package not installed. Install with: pip install openai")
 
 
 # Configure logging
@@ -35,6 +44,18 @@ USE_OSRM = os.getenv("USE_OSRM", "true").lower() == "true"
 REFRESH_MS = int(os.getenv("REFRESH_MS", "30000"))  # 30s
 DEFAULT_COMPANY_ID = int(os.getenv("COMPANY_ID", "1"))
 APP_PORT = int(os.getenv("PORT", "8051"))
+
+# OpenAI Configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if OPENAI_AVAILABLE and OPENAI_API_KEY:
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    print("✅ OpenAI client initialized successfully")
+else:
+    openai_client = None
+    if not OPENAI_API_KEY:
+        print("⚠️  OPENAI_API_KEY environment variable not set")
+    if not OPENAI_AVAILABLE:
+        print("⚠️  OpenAI package not available")
 
 # ----------------------------
 # Mock Data for Swiss Corp
@@ -620,19 +641,19 @@ app.layout = html.Div([
                         "display": "inline-block"
                     }),
                     
-                    # Chat/Message icon
-                    html.Div([
+                    # Chat/Message button
+                    dbc.Button([
                         html.I(className="fas fa-comment-dots", style={
                             "color": "#10b981", 
-                            "fontSize": "20px",
-                            "cursor": "pointer",
-                            "transition": "all 0.3s ease",
-                            "filter": "drop-shadow(0 2px 6px rgba(16, 185, 129, 0.3))"
+                            "fontSize": "20px"
                         })
-                    ], id="chat-toggle", className="me-4 d-flex align-items-center justify-content-center", style={
-                        "width": "40px", 
-                        "height": "40px",
-                        "cursor": "pointer"
+                    ], id="chat-toggle", className="me-4",
+                    color="link",
+                    style={
+                        "backgroundColor": "transparent",
+                        "border": "none",
+                        "padding": "8px",
+                        "boxShadow": "none"
                     }),
                     
                     # Dropdown/Menu button for indicators
@@ -831,6 +852,85 @@ app.layout = html.Div([
             })
         ], id="indicators-collapse", is_open=False),
         
+        # Chat Assistant Panel
+        dbc.Collapse([
+            html.Div([
+                # Chat Header
+                html.Div([
+                    html.H6([
+                        html.I(className="fas fa-comment-dots me-2", style={"color": "#10b981"}),
+                        "Swiss Corp Assistant"
+                    ], className="mb-0 text-white fw-bold"),
+                    dbc.Button([
+                        html.I(className="fas fa-times")
+                    ], color="link", size="sm", id="chat-close", style={
+                        "color": "white", 
+                        "padding": "0",
+                        "border": "none"
+                    })
+                ], className="d-flex justify-content-between align-items-center mb-3"),
+                
+                # Chat Messages Area
+                html.Div(id="chat-messages", children=[
+                    html.Div([
+                        html.Div([
+                            html.I(className="fas fa-robot me-2", style={"color": "#10b981"}),
+                            html.Span("Hello! I'm your Swiss Corp supply chain assistant. How can I help you today?", 
+                                     className="text-white", style={"fontSize": "0.9em"})
+                        ], className="d-flex align-items-start")
+                    ], className="mb-2 p-2", style={
+                        "backgroundColor": "rgba(16, 185, 129, 0.1)",
+                        "borderRadius": "8px",
+                        "border": "1px solid rgba(16, 185, 129, 0.3)"
+                    })
+                ], style={
+                    "height": "300px",
+                    "overflowY": "auto",
+                    "marginBottom": "12px",
+                    "padding": "8px",
+                    "backgroundColor": "rgba(0, 0, 0, 0.2)",
+                    "borderRadius": "8px",
+                    "border": "1px solid rgba(255, 255, 255, 0.1)"
+                }),
+                
+                # Chat Input Area
+                html.Div([
+                    dbc.InputGroup([
+                        dbc.Input(
+                            id="chat-input",
+                            placeholder="Ask about your supply chain...",
+                            style={
+                                "backgroundColor": "rgba(255, 255, 255, 0.1)",
+                                "border": "1px solid rgba(255, 255, 255, 0.2)",
+                                "color": "white"
+                            }
+                        ),
+                        dbc.Button([
+                            html.I(className="fas fa-paper-plane")
+                        ], id="chat-send", color="success", style={
+                            "backgroundColor": "#10b981",
+                            "border": "none"
+                        })
+                    ])
+                ])
+                
+            ], style={
+                "position": "fixed",
+                "bottom": "20px",
+                "right": "20px",
+                "width": "400px",
+                "height": "450px",
+                "zIndex": "9999",
+                "padding": "20px",
+                "backgroundColor": "rgba(15, 23, 42, 0.95)",
+                "backdropFilter": "blur(20px)",
+                "border": "1px solid rgba(16, 185, 129, 0.3)",
+                "borderRadius": "12px",
+                "boxShadow": "0 20px 40px rgba(0, 0, 0, 0.3)",
+                "animation": "slideUp 0.3s ease-out"
+            })
+        ], id="chat-collapse", is_open=False),
+        
     ], fluid=True, className="h-100")
 ], style={
     "height": "100vh",
@@ -926,6 +1026,163 @@ def update_agriculture_label(value):
 )
 def update_transport_label(value):
     return "Transportation & Logistics: ON" if value else "Transportation & Logistics: OFF"
+
+
+# ----------------------------------
+# Chat Assistant callbacks
+# ----------------------------------
+@app.callback(
+    Output("chat-collapse", "is_open"),
+    [Input("chat-toggle", "n_clicks"), Input("chat-close", "n_clicks")],
+    State("chat-collapse", "is_open")
+)
+def toggle_chat(chat_clicks, close_clicks, is_open):
+    """Toggle the chat assistant visibility."""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return False
+    
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    print(f"Chat button clicked: {button_id}")
+    
+    if button_id == "chat-toggle" and chat_clicks:
+        return not is_open
+    elif button_id == "chat-close" and close_clicks:
+        return False
+    
+    return is_open
+
+@app.callback(
+    Output("chat-messages", "children"),
+    Output("chat-input", "value"),
+    [Input("chat-send", "n_clicks"), Input("chat-input", "n_submit")],
+    [State("chat-input", "value"), State("chat-messages", "children")]
+)
+def handle_chat_message(send_clicks, input_submit, message, current_messages):
+    """Handle chat messages and LangGraph integration."""
+    if not message or message.strip() == "":
+        return current_messages, ""
+    
+    # Add user message
+    user_message = html.Div([
+        html.Div([
+            html.Span(message, className="text-white", style={"fontSize": "0.9em"}),
+            html.I(className="fas fa-user ms-2", style={"color": "#60a5fa"})
+        ], className="d-flex align-items-start justify-content-end")
+    ], className="mb-2 p-2", style={
+        "backgroundColor": "rgba(96, 165, 250, 0.1)",
+        "borderRadius": "8px",
+        "border": "1px solid rgba(96, 165, 250, 0.3)",
+        "textAlign": "right"
+    })
+    
+    # Generate AI response (placeholder for LangGraph integration)
+    ai_response = generate_ai_response(message)
+    
+    ai_message = html.Div([
+        html.Div([
+            html.I(className="fas fa-robot me-2", style={"color": "#10b981"}),
+            html.Span(ai_response, className="text-white", style={"fontSize": "0.9em"})
+        ], className="d-flex align-items-start")
+    ], className="mb-2 p-2", style={
+        "backgroundColor": "rgba(16, 185, 129, 0.1)",
+        "borderRadius": "8px",
+        "border": "1px solid rgba(16, 185, 129, 0.3)"
+    })
+    
+    # Add both messages to the chat
+    updated_messages = current_messages + [user_message, ai_message]
+    
+    return updated_messages, ""
+
+def generate_ai_response(user_message: str) -> str:
+    """Generate AI response using OpenAI GPT."""
+    if not openai_client:
+        # Provide helpful setup instructions
+        if not OPENAI_AVAILABLE:
+            return "🔧 **Setup Required**: OpenAI package not installed. Run: `pip install openai` in your terminal, then restart the app."
+        elif not OPENAI_API_KEY:
+            return "🔑 **API Key Missing**: Set your OpenAI API key with: `export OPENAI_API_KEY='your-key-here'` then restart the app. Get your key from: https://platform.openai.com/api-keys"
+        else:
+            return "⚠️ AI assistant is not available. Please check OpenAI configuration."
+    
+    # Swiss Corp supply chain context
+    system_context = """You are an AI assistant for Swiss Corp, a supply chain management company. 
+
+CURRENT SUPPLY CHAIN STATUS:
+- Company: Swiss Corp (HQ in Zurich, Switzerland)
+- Active Suppliers: 10 suppliers across Central Europe
+- High-risk suppliers: Organic Harvest Co (Lucerne), Tyrolean Mountain Farms (Graz)
+- Current alerts: 7 total (2 high-risk, 3 medium-risk, 2 surplus opportunities)
+- Crops: soybeans, potatoes, rice, dairy, grapes, wine grapes, corn
+- Transport: Truck and train routes, 2-3 day average delivery
+- Climate issues: Drought in Lucerne affecting soybeans, heavy rainfall in Lombardy affecting rice
+
+SUPPLIERS:
+1. Fenaco Genossenschaft (Bern, Switzerland) - SURPLUS - Truck,Train
+2. Alpine Farms AG (Thurgau, Switzerland) - RISK - Truck  
+3. Swiss Valley Produce (Innsbruck, Austria) - SURPLUS - Truck,Train
+4. Organic Harvest Co (Lucerne, Switzerland) - HIGHRISK - Truck
+5. Bavarian Grain Collective (Munich, Germany) - SURPLUS - Truck,Train
+6. Rhône Valley Vineyards (Geneva, Switzerland) - SURPLUS - Truck
+7. Lombardy Agricultural Union (Milan, Italy) - RISK - Truck,Train
+8. Black Forest Organics (Freiburg, Germany) - SURPLUS - Truck
+9. Alsace Premium Produce (Strasbourg, France) - RISK - Truck,Train
+10. Tyrolean Mountain Farms (Graz, Austria) - HIGHRISK - Truck
+
+ACTIVE ALERTS:
+- Critical drought conditions affecting soybean harvest (40% yield reduction)
+- Storage conditions deteriorating for potatoes
+- Flooding concerns in Lombardy affecting rice
+- Alpine dairy disrupted by extreme weather
+- Exceptional grape harvest (25% above average)
+- Alsace wine grape surplus available
+- Excellent corn harvest with 500t additional capacity
+
+Provide helpful, specific advice about supply chain management, risk mitigation, and operational optimization. Keep responses concise and actionable."""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",  # Using the more cost-effective model
+            messages=[
+                {"role": "system", "content": system_context},
+                {"role": "user", "content": user_message}
+            ],
+            max_tokens=300,
+            temperature=0.7
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        print(f"OpenAI API error: {e}")
+        # Fallback to local responses if OpenAI fails
+        return get_fallback_response(user_message)
+
+def get_fallback_response(user_message: str) -> str:
+    """Provide intelligent fallback responses when OpenAI is not available."""
+    message_lower = user_message.lower()
+    
+    if any(word in message_lower for word in ["supplier", "suppliers"]):
+        return "📊 **Supplier Overview**: You have 10 active suppliers across Central Europe. **High-risk suppliers**: Organic Harvest Co (Lucerne) and Tyrolean Mountain Farms (Graz) due to drought and alpine weather. **Surplus suppliers**: Fenaco (Bern), Swiss Valley (Innsbruck), Bavarian Grain (Munich). Would you like details on any specific supplier?"
+    
+    elif any(word in message_lower for word in ["alert", "alerts", "risk"]):
+        return "🚨 **Active Alerts (7 total)**: **HIGH RISK**: Drought affecting soybeans (40% yield loss), Alpine dairy disruption. **MEDIUM RISK**: Storage issues (potatoes), Lombardy flooding (rice), Alsace transport delays. **SURPLUS**: Exceptional grape harvest (+25%), Corn surplus (500t available). Priority: Address drought and dairy issues first."
+    
+    elif any(word in message_lower for word in ["weather", "climate"]):
+        return "🌦️ **Climate Impact**: **Drought** in Lucerne affecting soybean harvest (40% reduction). **Heavy rainfall** in Lombardy impacting rice production. **Recommendation**: Activate alternative suppliers - Bavarian Grain (Munich) for soybeans, Swiss Valley (Innsbruck) for rice alternatives. Monitor weather forecasts for next 2 weeks."
+    
+    elif any(word in message_lower for word in ["transport", "logistics", "delivery"]):
+        return "🚛 **Logistics Status**: Average delivery time: 2-3 days. **Routes**: Munich-Zurich (truck/train), Milan-Zurich (minor weather delays), Geneva-Zurich (optimal). **Recommendation**: Use train routes during weather disruptions. Bavarian Grain and Black Forest Organics have best transport reliability."
+    
+    elif any(word in message_lower for word in ["crop", "crops", "harvest"]):
+        return "🌾 **Crop Portfolio**: **At Risk**: Soybeans (drought), Rice (flooding), Dairy (alpine weather). **Surplus**: Grapes (+25% harvest), Wine grapes (premium available), Corn (+500t capacity). **Stable**: Potatoes (storage issues resolved). Focus on securing alternative soybean sources immediately."
+    
+    elif any(word in message_lower for word in ["recommendation", "advice", "help"]):
+        return "💡 **Priority Actions**: 1) **Immediate**: Source soybeans from Bavarian Grain to offset Lucerne drought. 2) **This week**: Secure dairy alternatives for Tyrolean disruption. 3) **Opportunity**: Lock in surplus grape pricing from Rhône Valley. 4) **Monitor**: Lombardy flooding impact on rice supply. Need specific help with any of these?"
+    
+    else:
+        return f"🤖 **Swiss Corp Assistant**: I understand you're asking about '{user_message}'. I can help with: **Suppliers** (risk analysis, alternatives), **Alerts** (prioritization, actions), **Weather** (impact assessment), **Logistics** (route optimization), **Crops** (harvest status, alternatives). What would you like to explore? *(Note: For enhanced AI responses, set up OpenAI integration)*"
 
 
 # ----------------------------------

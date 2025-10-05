@@ -345,4 +345,46 @@ ch Label Styling */
 /* Risk Factors Dropdown Switch Labels */
 #indicators-collapse .form-check-label {
     color: white !important;
+}/
+* Chat Panel Animation */
+@keyframes slideUp {
+    0% {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Chat Messages Scrollbar */
+#chat-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+#chat-messages::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+#chat-messages::-webkit-scrollbar-thumb {
+    background: rgba(16, 185, 129, 0.4);
+    border-radius: 3px;
+}
+
+#chat-messages::-webkit-scrollbar-thumb:hover {
+    background: rgba(16, 185, 129, 0.6);
+}
+
+/* Chat Input Styling */
+#chat-input::placeholder {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+#chat-input:focus {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    border-color: rgba(16, 185, 129, 0.5) !important;
+    box-shadow: 0 0 0 0.2rem rgba(16, 185, 129, 0.25) !important;
+    color: white !important;
 }
