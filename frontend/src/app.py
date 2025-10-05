@@ -45,6 +45,10 @@ REFRESH_MS = int(os.getenv("REFRESH_MS", "30000"))  # 30s
 DEFAULT_COMPANY_ID = int(os.getenv("COMPANY_ID", "1"))
 APP_PORT = int(os.getenv("PORT", "8051"))
 
+# Simple cache for API data to avoid repeated calls
+_API_CACHE = {}
+_CACHE_TIMEOUT = 300  # 5 minutes
+
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if OPENAI_AVAILABLE and OPENAI_API_KEY:
@@ -244,15 +248,39 @@ SEVERITY_ORDER = {
     "SURPLUS": 0,
 }
 
-def marker_for_supplier(s, selected_supplier_id=None, show_agriculture=False, show_climate=False):
+def marker_for_supplier(s, selected_supplier_id=None, show_agriculture=False, show_climate=False, show_transport=False):
     is_selected = s.get("SupplierId") == selected_supplier_id
     radius = 14 if is_selected else 10
     weight = 3 if is_selected else 1
     
-    print(f"marker_for_supplier called: show_agriculture={show_agriculture}, show_climate={show_climate}, supplier={s.get('SupplierId')}")
+    print(f"marker_for_supplier called: show_agriculture={show_agriculture}, show_climate={show_climate}, show_transport={show_transport}, supplier={s.get('SupplierId')}")
     
-    # Color logic based on toggles (climate takes priority over agriculture)
-    if show_climate:
+    # Color logic based on toggles (transport takes priority, then climate, then agriculture)
+    if show_transport:
+        # Use traffic-based colors for logistics risk
+        traffic_data = get_traffic_data_for_supplier(s.get("SupplierId"))
+        traffic_level = traffic_data["traffic_level"]
+        color = traffic_data["color"]
+        
+        tooltip_text = f"{s.get('Name') or 'Supplier'} - Traffic: {traffic_level} (+{traffic_data['delay_minutes']:.0f} min)"
+        popup_content = [
+            html.B(s.get("Name") or "Supplier"), html.Br(),
+            html.Div(s.get("Location","")), html.Br(),
+            html.Hr(),
+            html.Div([
+                html.Strong(f"🚛 Traffic Level: {traffic_level}"),
+                html.Br(),
+                html.Div(f"⏱️ Normal Travel Time: {traffic_data['duration_normal']:.0f} minutes"),
+                html.Div(f"🚦 Current Travel Time: {traffic_data['duration_traffic']:.0f} minutes"),
+                html.Div(f"⏰ Traffic Delay: +{traffic_data['delay_minutes']:.0f} minutes"),
+                html.Div(f"📊 Delay Percentage: {traffic_data['delay_percentage']:.1f}%"),
+                html.Br(),
+                html.Div(f"💡 Recommendation: {traffic_data['recommendation']}", 
+                        className="small text-primary")
+            ])
+        ]
+        
+    elif show_climate:
         # Use climate-based colors for transport risk
         climate_risk = get_climate_risk_for_supplier(s.get("SupplierId"))
         risk_level = climate_risk["risk_level"]
@@ -321,7 +349,7 @@ def marker_for_supplier(s, selected_supplier_id=None, show_agriculture=False, sh
         ]
 
     # Create unique key to force re-rendering when colors change
-    marker_mode = "climate" if show_climate else ("agriculture" if show_agriculture else "default")
+    marker_mode = "transport" if show_transport else ("climate" if show_climate else ("agriculture" if show_agriculture else "default"))
     marker_key = f"supplier-{s.get('SupplierId')}-{marker_mode}"
     
     return dl.CircleMarker(
@@ -341,14 +369,20 @@ def marker_for_supplier(s, selected_supplier_id=None, show_agriculture=False, sh
 def marker_for_company(c):
     if not c or not c.get("Lat") or not c.get("Lon"):
         return None
-    # Use a simple default marker (no external icon dependency)
-    return dl.Marker(
-        position=(c["Lat"], c["Lon"]),
+    # Use a distinctive marker for Swiss Corp HQ
+    return dl.CircleMarker(
+        center=(c["Lat"], c["Lon"]),
+        radius=20,
+        color="#1e40af",  # Dark blue border
+        weight=4,
+        fill=True,
+        fillColor="#3b82f6",  # Blue fill
+        fillOpacity=0.8,
         children=[
-            dl.Tooltip(f"{c.get('Name','Company')} (HQ)"),
+            dl.Tooltip(f"🏢 {c.get('Name','Company')} (HQ)"),
             dl.Popup([
-                html.B(c.get("Name","Company")), html.Br(),
-                html.Div(f"{c.get('City','')}, {c.get('Country','')}")
+                html.B(f"🏢 {c.get('Name','Company')} Headquarters"), html.Br(),
+                html.Div(f"📍 {c.get('City','')}, {c.get('Country','')}")
             ])
         ],
     )
@@ -402,7 +436,7 @@ def osrm_route(a: tuple, b: tuple) -> Optional[Dict[str, Any]]:
     except Exception:
         return None
 
-def build_supplier_routes(company: Dict[str, Any], suppliers: List[Dict[str, Any]], show_climate: bool = False) -> List[Any]:
+def build_supplier_routes(company: Dict[str, Any], suppliers: List[Dict[str, Any]], show_climate: bool = False, show_transport: bool = False) -> List[Any]:
     """Build polyline routes from each supplier to company location using OSRM routing."""
     if not company or not company.get("Lat") or not company.get("Lon"):
         return []
@@ -414,8 +448,12 @@ def build_supplier_routes(company: Dict[str, Any], suppliers: List[Dict[str, Any
             continue
         src = (s["Lat"], s["Lon"])
         
-        # Determine route color based on climate risk if enabled
-        if show_climate:
+        # Determine route color based on active mode (transport takes priority)
+        if show_transport:
+            traffic_data = get_traffic_data_for_supplier(s.get("SupplierId"))
+            route_color = traffic_data["color"]
+            route_weight = 4 if traffic_data["traffic_level"] == "HEAVY" else 3
+        elif show_climate:
             climate_risk = get_climate_risk_for_supplier(s.get("SupplierId"))
             risk_level = climate_risk["risk_level"]
             
@@ -482,7 +520,107 @@ def stock_item_card(s: Dict[str, Any]) -> dbc.ListGroupItem:
     )
 
 
-def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None, show_agriculture=False, show_climate=False):
+def build_map_fast(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None, show_agriculture=False, show_climate=False, show_transport=False):
+    """Fast map building - only update markers, reuse base map"""
+    
+    print("⚡ Fast map update - only changing marker colors")
+    
+    # Base markers
+    marker_children = []
+    comp_marker = marker_for_company(company)
+    if comp_marker:
+        marker_children.append(comp_marker)
+    
+    # Only update supplier markers (this is what changes with toggles)
+    for s in suppliers:
+        if s.get("Lat") and s.get("Lon"):
+            marker = marker_for_supplier(s, selected_supplier_id, show_agriculture, show_climate, show_transport)
+            marker_children.append(marker)
+
+    # Routes - use cached routes when possible
+    route_cache_key = f"routes_{len(suppliers)}_{show_climate}_{show_transport}"
+    now = dt.datetime.now().timestamp()
+    
+    if route_cache_key in _API_CACHE:
+        route_layers, timestamp = _API_CACHE[route_cache_key]
+        if now - timestamp < 60:  # 1 minute cache for routes
+            print("🚀 Using cached routes")
+        else:
+            route_layers = build_supplier_routes(company, suppliers, show_climate, show_transport)
+            _API_CACHE[route_cache_key] = (route_layers, now)
+    else:
+        route_layers = build_supplier_routes(company, suppliers, show_climate, show_transport)
+        _API_CACHE[route_cache_key] = (route_layers, now)
+
+    # Alert overlays (minimal processing)
+    alert_overlays = []
+    suppliers_index = {s.get("SupplierId"): s for s in suppliers}
+    for a in alerts:
+        sev = (a.get("Severity") or "").upper()
+        color = TIER_COLOR.get(sev, "#93c5fd")
+
+        sup = suppliers_index.get(a.get("SupplierId"))
+        if sup and sup.get("Lat") and sup.get("Lon"):
+            lat, lon = sup["Lat"], sup["Lon"]
+        else:
+            if company and company.get("Lat") and company.get("Lon"):
+                lat, lon = company["Lat"], company["Lon"]
+            else:
+                continue
+
+        alert_overlays.append(
+            dl.CircleMarker(
+                center=(lat, lon),
+                radius=14,
+                color=color,
+                fill=True,
+                fillOpacity=0.45,
+            )
+        )
+
+    # Base layers (static)
+    children = [
+        dl.TileLayer(
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        )
+    ]
+    
+    # Add overlays (only if needed)
+    if show_agriculture:
+        agriculture_layer = create_satellite_overlay()
+        if agriculture_layer:
+            children.append(agriculture_layer)
+    
+    if show_climate:
+        climate_layer = create_climate_overlay()
+        if climate_layer:
+            children.append(climate_layer)
+    
+    # Add layers
+    children.extend([
+        dl.LayerGroup(alert_overlays, id="alert-overlays"),
+        dl.LayerGroup(marker_children, id="entity-markers"),
+        dl.LayerGroup(route_layers, id="route-layers"),
+    ])
+    
+    # Add legend table for active mode
+    if show_agriculture or show_climate or show_transport:
+        legend_table = create_legend_table(show_agriculture, show_climate, show_transport)
+        if legend_table:
+            children.append(legend_table)
+    
+    # Return optimized map
+    return dl.Map(
+        id="main-map",
+        center=(47.3769, 8.5417), 
+        zoom=8, 
+        children=children, 
+        style={"height": "calc(100vh - 80px)", "width": "100%"}
+    )
+
+def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: List[Dict[str, Any]], selected_supplier_id=None, show_agriculture=False, show_climate=False, show_transport=False):
+    """Original map building function (kept for compatibility)"""
     # Base markers
     marker_children = []
     comp_marker = marker_for_company(company)
@@ -490,14 +628,14 @@ def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: 
         marker_children.append(comp_marker)
     
     # Enhanced supplier markers with agricultural monitoring data
-    # Enhanced supplier markers with agricultural monitoring and climate data
+    # Enhanced supplier markers with agricultural monitoring, climate data, and transport data
     for s in suppliers:
         if s.get("Lat") and s.get("Lon"):
-            marker = marker_for_supplier(s, selected_supplier_id, show_agriculture, show_climate)
+            marker = marker_for_supplier(s, selected_supplier_id, show_agriculture, show_climate, show_transport)
             marker_children.append(marker)
 
-    # Routes with proper OSRM routing and climate risk coloring
-    route_layers = build_supplier_routes(company, suppliers, show_climate)
+    # Routes with proper OSRM routing and risk coloring
+    route_layers = build_supplier_routes(company, suppliers, show_climate, show_transport)
 
     # Alert overlays (CircleMarkers) at supplier if SupplierId present, else at company
     alert_overlays = []
@@ -573,8 +711,8 @@ def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: 
     ])
     
     # Add legend table for active mode
-    if show_agriculture or show_climate:
-        legend_table = create_legend_table(show_agriculture, show_climate)
+    if show_agriculture or show_climate or show_transport:
+        legend_table = create_legend_table(show_agriculture, show_climate, show_transport)
         if legend_table:
             children.append(legend_table)
     
@@ -643,10 +781,21 @@ def create_climate_overlay():
             id="climate-overlay-fallback"
         )
 
-def create_legend_table(show_agriculture: bool, show_climate: bool):
+def create_legend_table(show_agriculture: bool, show_climate: bool, show_transport: bool = False):
     """Create legend table showing color meanings and value ranges"""
     
-    if show_climate:
+    if show_transport:
+        # Traffic/Logistics Legend
+        legend_data = [
+            {"color": "#ef4444", "risk": "HEAVY", "conditions": "Delay > 25 minutes", "impact": "Significant delays expected"},
+            {"color": "#f59e0b", "risk": "MODERATE", "conditions": "Delay 10-25 minutes", "impact": "Some delays possible"},
+            {"color": "#22c55e", "risk": "LIGHT", "conditions": "Delay < 10 minutes", "impact": "Normal travel time"}
+        ]
+        
+        title = "🚛 Traffic & Logistics Legend"
+        headers = ["", "Traffic Level", "Delay Range", "Logistics Impact"]
+        
+    elif show_climate:
         # Climate/Transport Risk Legend
         legend_data = [
             {"color": "#ef4444", "emoji": "🔴", "risk": "HIGH", "conditions": "Temp < -2°C or > 32°C, Precip > 20mm", "impact": "Major delays expected"},
@@ -848,14 +997,84 @@ def get_climate_risk_for_supplier(supplier_id: int) -> Dict:
                     "additional_delay_minutes": transport["additional_delay_minutes"],
                     "recommendation": transport["recommended_action"]
                 }
+            else:
+                # API returned success: false (e.g., supplier not in climate monitoring list)
+                if supplier_id <= 10:  # Only log for expected suppliers
+                    print(f"Climate data not available for supplier {supplier_id}: {data.get('message', 'Unknown reason')}")
+                return get_mock_climate_risk_for_supplier(supplier_id)
         
         # Fallback to mock data if API fails
-        print(f"Climate API failed for supplier {supplier_id}, using fallback")
+        if supplier_id <= 10:  # Only log for expected suppliers
+            print(f"Climate API failed for supplier {supplier_id} (HTTP {response.status_code}), using fallback")
         return get_mock_climate_risk_for_supplier(supplier_id)
         
     except Exception as e:
-        print(f"Error getting climate data for supplier {supplier_id}: {e}")
+        if supplier_id <= 10:  # Only log for expected suppliers
+            print(f"Error getting climate data for supplier {supplier_id}: {e}")
         return get_mock_climate_risk_for_supplier(supplier_id)
+
+def get_traffic_data_for_supplier(supplier_id: int) -> Dict:
+    """Get real-time traffic data from backend"""
+    try:
+        # Call traffic API endpoint
+        response = requests.get(f"{API_BASE_URL}/satellite/traffic/route/{supplier_id}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if data.get("success"):
+                traffic = data["traffic"]
+                
+                return {
+                    "traffic_level": traffic["level"],
+                    "color": traffic["color"],
+                    "delay_minutes": traffic["delay_minutes"],
+                    "delay_percentage": traffic["delay_percentage"],
+                    "duration_normal": traffic["duration_normal_minutes"],
+                    "duration_traffic": traffic["duration_traffic_minutes"],
+                    "recommendation": data["recommendation"]
+                }
+        
+        # Fallback to mock data if API fails
+        print(f"Traffic API failed for supplier {supplier_id}, using fallback")
+        return get_mock_traffic_data_for_supplier(supplier_id)
+        
+    except Exception as e:
+        print(f"Error getting traffic data for supplier {supplier_id}: {e}")
+        return get_mock_traffic_data_for_supplier(supplier_id)
+
+def get_mock_traffic_data_for_supplier(supplier_id: int) -> Dict:
+    """Fallback mock traffic data"""
+    import random
+    
+    # Set seed for consistent results
+    random.seed(supplier_id * 123)
+    
+    # Generate traffic delay
+    delay_minutes = random.uniform(0, 45)
+    
+    # Determine traffic level
+    if delay_minutes > 25:
+        traffic_level = "HEAVY"
+        color = "#ef4444"
+    elif delay_minutes > 10:
+        traffic_level = "MODERATE"
+        color = "#f59e0b"
+    else:
+        traffic_level = "LIGHT"
+        color = "#22c55e"
+    
+    base_time = 120  # 2 hours base
+    
+    return {
+        "traffic_level": traffic_level,
+        "color": color,
+        "delay_minutes": round(delay_minutes, 1),
+        "delay_percentage": round((delay_minutes / base_time) * 100, 1),
+        "duration_normal": base_time,
+        "duration_traffic": base_time + delay_minutes,
+        "recommendation": f"{traffic_level.title()} traffic - {delay_minutes:.0f} min delay"
+    }
 
 def get_mock_climate_risk_for_supplier(supplier_id: int) -> Dict:
     """Fallback mock climate risk data"""
@@ -1055,6 +1274,7 @@ app.config.suppress_callback_exceptions = True
 app.layout = html.Div([
     dcc.Store(id="token-store", data="mock-token"),  # Auto-login with mock token
     dcc.Store(id="selected-supplier-id"),
+    dcc.Store(id="suppliers-data-store"),  # Cache suppliers data
     
     # Animated starfield background
     html.Div(id="starfield", children=[
@@ -1623,26 +1843,7 @@ def toggle_indicators(n_clicks, is_open):
 # ----------------------------------
 # Data layer toggle callbacks
 # ----------------------------------
-@app.callback(
-    Output("climate-toggle", "label"),
-    Input("climate-toggle", "value")
-)
-def update_climate_label(value):
-    return "Climate and Transportation Logistics: ON" if value else "Climate and Transportation Logistics: OFF"
 
-@app.callback(
-    Output("traffic-toggle", "label"),
-    Input("traffic-toggle", "value")
-)
-def update_traffic_label(value):
-    return "Traffic and Logistics: ON" if value else "Traffic and Logistics: OFF"
-
-@app.callback(
-    Output("agriculture-toggle", "label"), 
-    Input("agriculture-toggle", "value")
-)
-def update_agriculture_label(value):
-    return "Agricultural Monitoring: ON" if value else "Agricultural Monitoring: OFF"
 
 
 
@@ -2062,28 +2263,21 @@ def create_summary_metrics():
 
 
 # ----------------------------------
-# Live refresh: map + alerts
+# Data loading callback (only when needed)
 # ----------------------------------
 @app.callback(
-    Output("map-container", "children"),
-    Output("alerts-list", "children"),
+    Output("suppliers-data-store", "data"),
     Input("token-store", "data"),
-    Input("selected-supplier-id", "data"),
-    Input("agriculture-toggle", "value"),
-    Input("climate-toggle", "value")
+    prevent_initial_call=False
 )
-def refresh_dashboard(token, selected_supplier_id, show_agriculture_data, show_climate_data):
-    """Refresh dashboard with elegant full-screen map and alerts."""
-    
-    print(f"refresh_dashboard called: show_agriculture_data={show_agriculture_data}, show_climate_data={show_climate_data}")
-    
-    # Try to get real data from backend, fallback to mock data
+def load_suppliers_data(token):
+    """Load suppliers data once and cache it"""
     try:
         # Get real suppliers from backend
         backend_suppliers = get_suppliers(token)
         if isinstance(backend_suppliers, list) and len(backend_suppliers) > 0:
             suppliers = backend_suppliers
-            print(f"✅ Using {len(suppliers)} real suppliers from backend")
+            print(f"✅ Loaded {len(suppliers)} real suppliers from backend")
         else:
             suppliers = MOCK_SUPPLIERS
             print(f"⚠️ Backend unavailable, using {len(suppliers)} mock suppliers")
@@ -2091,11 +2285,7 @@ def refresh_dashboard(token, selected_supplier_id, show_agriculture_data, show_c
         suppliers = MOCK_SUPPLIERS
         print(f"⚠️ Backend error: {e}, using {len(suppliers)} mock suppliers")
     
-    # Use mock data for company and alerts (can be updated later)
-    company = MOCK_COMPANY
-    alerts = MOCK_ALERTS
-
-    # Normalize data for consistency (handle both mock and real backend data)
+    # Normalize data for consistency
     normalized_suppliers = []
     for s in suppliers:
         # Handle different data structures
@@ -2106,66 +2296,129 @@ def refresh_dashboard(token, selected_supplier_id, show_agriculture_data, show_c
         city = s.get("city") or s.get("City", "")
         country = s.get("country") or s.get("Country", "")
         
-        # Generate a tier based on NDVI if not present (for real backend data)
+        # Generate a tier based on NDVI if not present
         if "tier" in s:
             tier = s["tier"]
         else:
-            # Generate tier based on mock NDVI for consistency
             ndvi = get_mock_ndvi_for_supplier(supplier_id)
             if ndvi > 0.7:
-                tier = "SURPLUS"
+                tier = "Premium"
             elif ndvi > 0.5:
-                tier = "STABLE"
-            elif ndvi > 0.3:
-                tier = "RISK"
+                tier = "Standard"
             else:
-                tier = "HIGHRISK"
+                tier = "Basic"
         
         normalized_suppliers.append({
             "SupplierId": supplier_id,
             "Name": name,
             "Lat": lat,
             "Lon": lon,
+            "Location": f"{city}, {country}".strip(", "),
             "CurrentTier": tier,
-            "Location": f"{city}, {country}",
             "_raw": s
         })
-
-    normalized_company = {
-        "CompanyId": company["id"],
-        "Name": company["name"],
-        "Lat": company["latitude"],
-        "Lon": company["longitude"],
-        "City": company["city"],
-        "Country": company["country"]
-    }
-
-    # Build elegant full-screen map with proper routing, agricultural monitoring, and climate data
-    map_component = build_map(normalized_company, normalized_suppliers, alerts, selected_supplier_id, show_agriculture_data, show_climate_data)
     
-    # Build alerts list
-    normalized_alerts = []
-    for a in alerts:
-        normalized_alerts.append({
-            "AlertId": a["id"],
-            "CompanyId": a["company_id"],
-            "SupplierId": a["supplier_id"],
-            "CropId": a["crop_type"],
-            "CreatedAt": a["created_at"],
-            "Severity": a["severity"].upper(),
-            "Title": a["title"],
-            "Details": {"message": a["message"]},
-        })
+    return normalized_suppliers
 
+# ----------------------------------
+# Map rendering callback (optimized)
+# ----------------------------------
+@app.callback(
+    Output("map-container", "children"),
+    [Input("suppliers-data-store", "data"),
+     Input("selected-supplier-id", "data"),
+     Input("agriculture-toggle", "value"),
+     Input("climate-toggle", "value"),
+     Input("transport-toggle", "value")],
+    prevent_initial_call=False
+)
+def update_map_visualization(suppliers_data, selected_supplier_id, show_agriculture_data, show_climate_data, show_transport_data):
+    """Update map visualization without full page refresh"""
+    
+    if not suppliers_data:
+        return html.Div("Loading suppliers data...", className="text-white text-center p-4")
+    
+    print(f"🎯 Fast map update: agriculture={show_agriculture_data}, climate={show_climate_data}, transport={show_transport_data}")
+    
+    # Use cached data
+    normalized_suppliers = suppliers_data
+    
+    # Normalize company data to match expected format
+    normalized_company = {
+        "CompanyId": MOCK_COMPANY["id"],
+        "Name": MOCK_COMPANY["name"],
+        "Lat": MOCK_COMPANY["latitude"],
+        "Lon": MOCK_COMPANY["longitude"],
+        "City": MOCK_COMPANY["city"],
+        "Country": MOCK_COMPANY["country"]
+    }
+    
+    alerts = MOCK_ALERTS
+    
+    # Build map with current toggle states (optimized)
+    map_component = build_map_fast(normalized_company, normalized_suppliers, alerts, selected_supplier_id, show_agriculture_data, show_climate_data, show_transport_data)
+    
+    return map_component
+
+# ----------------------------------
+# Alerts callback (separate from map)
+# ----------------------------------
+@app.callback(
+    Output("alerts-list", "children"),
+    Input("suppliers-data-store", "data"),
+    prevent_initial_call=False
+)
+def update_alerts_list(suppliers_data):
+    """Update alerts list independently of map"""
+    
+    if not suppliers_data:
+        return []
+    
+    # Use mock alerts for now
+    alerts = MOCK_ALERTS
+    normalized_suppliers = suppliers_data
+    
     # Create suppliers index for alert cards
     suppliers_index = {s["SupplierId"]: s for s in normalized_suppliers}
     
     # Sort alerts by severity
-    sorted_alerts = sorted(normalized_alerts, key=lambda x: SEVERITY_ORDER.get(x.get("Severity", "STABLE"), 0), reverse=True)
+    SEVERITY_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "STABLE": 0}
+    normalized_alerts = []
+    for a in alerts:
+        normalized_alerts.append({
+            "SupplierId": a.get("supplier_id") or a.get("SupplierId"),
+            "Severity": a["severity"].upper(),
+            "Title": a["title"],
+            "Details": {"message": a["message"]},
+        })
     
+    sorted_alerts = sorted(normalized_alerts, key=lambda x: SEVERITY_ORDER.get(x.get("Severity", "STABLE"), 0), reverse=True)
     alert_cards = [alert_card(a, suppliers_index) for a in sorted_alerts]
     
-    return map_component, alert_cards
+    return alert_cards
+
+# ----------------------------------
+# Clientside callbacks for instant UI updates
+# ----------------------------------
+app.clientside_callback(
+    """
+    function(agriculture_value, climate_value, transport_value) {
+        // Update toggle states instantly on client side
+        const agriculture_label = agriculture_value ? "Agricultural Monitoring: ON" : "Agricultural Monitoring: OFF";
+        const climate_label = climate_value ? "Climate and Transportation Logistics: ON" : "Climate and Transportation Logistics: OFF";
+        const transport_label = transport_value ? "Transportation & Logistics: ON" : "Transportation & Logistics: OFF";
+        
+        return [agriculture_label, climate_label, transport_label];
+    }
+    """,
+    [Output("agriculture-toggle", "label"),
+     Output("climate-toggle", "label"),
+     Output("transport-toggle", "label")],
+    [Input("agriculture-toggle", "value"),
+     Input("climate-toggle", "value"),
+     Input("transport-toggle", "value")]
+)
+
 
 
 

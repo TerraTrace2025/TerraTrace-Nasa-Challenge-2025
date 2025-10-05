@@ -192,7 +192,13 @@ def get_supplier_climate(
     }
     
     if supplier_id not in supplier_coords:
-        raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
+        # Return a graceful response for unknown suppliers instead of 404
+        return {
+            "success": False,
+            "error": f"Climate data not available for supplier {supplier_id}",
+            "supplier": {"id": supplier_id, "name": f"Supplier {supplier_id}"},
+            "message": "Climate monitoring only available for suppliers 1-10"
+        }
     
     coords = supplier_coords[supplier_id]
     
@@ -240,7 +246,13 @@ def get_route_climate_risk(supplier_id: int):
     }
     
     if supplier_id not in supplier_coords:
-        raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
+        # Return a graceful response for unknown suppliers instead of 404
+        return {
+            "success": False,
+            "error": f"Climate route data not available for supplier {supplier_id}",
+            "supplier": {"id": supplier_id, "name": f"Supplier {supplier_id}"},
+            "message": "Climate route monitoring only available for suppliers 1-10"
+        }
     
     coords = supplier_coords[supplier_id]
     
@@ -321,7 +333,13 @@ def get_route_traffic(supplier_id: int):
     }
     
     if supplier_id not in supplier_coords:
-        raise HTTPException(status_code=404, detail=f"Supplier {supplier_id} not found")
+        # Return a graceful response for unknown suppliers instead of 404
+        return {
+            "success": False,
+            "error": f"Traffic data not available for supplier {supplier_id}",
+            "supplier": {"id": supplier_id, "name": f"Supplier {supplier_id}"},
+            "message": "Traffic monitoring only available for suppliers 1-10"
+        }
     
     coords = supplier_coords[supplier_id]
     
