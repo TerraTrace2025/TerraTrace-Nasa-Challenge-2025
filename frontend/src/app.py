@@ -439,54 +439,42 @@ def recommendations_panel(recs: Dict[str, Any], suppliers_index: Dict[Any, Dict[
 
 
 def alert_card(a: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
-    det = a.get("Details") or {}
-
+    """Compact alert card for dropdown display."""
     sev_key = (a.get("Severity") or "STABLE").upper()
     sev = SEVERITY_BADGE.get(sev_key, SEVERITY_BADGE["STABLE"])
     sup = suppliers_index.get(a.get("SupplierId")) or {"Name": f"Supplier {a.get('SupplierId')}"}
-
-    # Why/Message handling
-    raw_msg = det.get("why") or det.get("message") or a.get("Title") or ""
-    recs = None
-    why_node: Any = None
-
-    if raw_msg is not None:
-        try:
-            msg_json = json.loads(raw_msg) if isinstance(raw_msg, str) else raw_msg
-            if isinstance(msg_json, dict) and msg_json.get("recommendations"):
-                recs = normalize_recs(msg_json)
-
-            else:
-                # Falls kein recs-Objekt drin → zeige Raw JSON formatiert
-                why_node = html.Pre(json.dumps(msg_json, indent=2), className="small bg-light p-2 rounded")
-        except Exception:
-            why_node = html.Div(raw_msg, className="mt-3 text-body")
-
-    body_children = [
+    
+    # Get message
+    det = a.get("Details") or {}
+    message = det.get("message") or a.get("Title") or "No details available"
+    
+    return html.Div([
         html.Div([
-            dbc.Badge(sev["text"], color=sev["color"], className="me-2"),
-            html.Span(a.get("Title", ""), className="fw-bold text-dark fs-5"),
-        ], className="d-flex align-items-center mb-2"),
-
-        html.Small(f"Supplier: {sup.get('Name','?').capitalize()}", className="text-muted d-block"),
-        html.Small(f"Crop: {a.get('CropId','?').capitalize()}", className="text-muted d-block"),
-    ]
-
-    # show why/message if present
-    if why_node:
-        body_children.append(why_node)
-
-    # pretty recommendations panel
-    if recs:
-        body_children.append(html.Hr())
-        body_children.append(html.H6("Recommendations", className="mt-2"))
-        body_children.append(recommendations_panel(recs, suppliers_index))
-
-    return dbc.Card(
-        dbc.CardBody(body_children),
-        className="mb-3 shadow-sm rounded-3 border-0",
-        style={"position": "relative", "zIndex": 10}
-    )
+            dbc.Badge(sev["text"], color=sev["color"], className="me-2", style={"fontSize": "0.7em"}),
+            html.Span(a.get("Title", "Alert"), className="fw-semibold text-white", style={"fontSize": "0.9em"})
+        ], className="d-flex align-items-center mb-1"),
+        
+        html.Div([
+            html.Small(sup.get('Name', 'Unknown Supplier'), className="text-blue-300 me-2"),
+            html.Small(f"• {a.get('CropId', 'Unknown').title()}", className="text-gray-400")
+        ], className="d-flex align-items-center mb-1"),
+        
+        html.P(message, className="text-gray-300 mb-0", style={
+            "fontSize": "0.8em",
+            "lineHeight": "1.3",
+            "maxHeight": "2.6em",
+            "overflow": "hidden",
+            "textOverflow": "ellipsis",
+            "display": "-webkit-box",
+            "WebkitLineClamp": "2",
+            "WebkitBoxOrient": "vertical"
+        })
+    ], style={
+        "padding": "12px",
+        "borderBottom": "1px solid rgba(59, 130, 246, 0.2)",
+        "cursor": "pointer",
+        "transition": "all 0.2s ease"
+    }, className="alert-dropdown-item")
 
 
 def risk_timeline_placeholder():
@@ -601,30 +589,35 @@ app.layout = html.Div([
             dbc.Col([
                 # Header icons - sleek and elegant
                 html.Div([
-                    # Alert/Notification icon with count
+                    # Bell icon button with count
                     html.Div([
-                        html.I(className="fas fa-exclamation-triangle", style={
-                            "color": "#ef4444", 
-                            "fontSize": "20px",
-                            "cursor": "pointer",
-                            "transition": "all 0.3s ease",
-                            "filter": "drop-shadow(0 2px 4px rgba(0,0,0,0.3))"
+                        dbc.Button([
+                            html.I(className="fas fa-bell", style={
+                                "color": "#ef4444", 
+                                "fontSize": "20px"
+                            })
+                        ], id="alerts-toggle", 
+                        color="link",
+                        style={
+                            "backgroundColor": "transparent",
+                            "border": "none",
+                            "padding": "8px",
+                            "boxShadow": "none"
                         }),
                         dbc.Badge("7", color="danger", className="position-absolute", style={
                             "fontSize": "0.6em",
-                            "top": "-8px",
-                            "right": "-8px",
+                            "top": "0px",
+                            "right": "0px",
                             "minWidth": "18px",
                             "height": "18px",
                             "borderRadius": "50%",
                             "display": "flex",
                             "alignItems": "center",
-                            "justifyContent": "center"
+                            "justifyContent": "center",
+                            "zIndex": "10"
                         })
-                    ], id="alerts-toggle", className="me-4 position-relative d-flex align-items-center justify-content-center", style={
-                        "width": "40px", 
-                        "height": "40px",
-                        "cursor": "pointer"
+                    ], className="me-4 position-relative", style={
+                        "display": "inline-block"
                     }),
                     
                     # Chat/Message icon
@@ -642,19 +635,19 @@ app.layout = html.Div([
                         "cursor": "pointer"
                     }),
                     
-                    # Dropdown/Menu icon for indicators
-                    html.Div([
+                    # Dropdown/Menu button for indicators
+                    dbc.Button([
                         html.I(className="fas fa-bars", style={
                             "color": "#f59e0b", 
-                            "fontSize": "20px",
-                            "cursor": "pointer",
-                            "transition": "all 0.3s ease",
-                            "filter": "drop-shadow(0 2px 6px rgba(245, 158, 11, 0.3))"
+                            "fontSize": "20px"
                         })
-                    ], id="indicators-toggle", className="me-4 d-flex align-items-center justify-content-center", style={
-                        "width": "40px", 
-                        "height": "40px",
-                        "cursor": "pointer"
+                    ], id="indicators-toggle", className="me-4",
+                    color="link",
+                    style={
+                        "backgroundColor": "transparent",
+                        "border": "none",
+                        "padding": "8px",
+                        "boxShadow": "none"
                     }),
                     
                     # Analytics/Dashboard icon
@@ -751,20 +744,92 @@ app.layout = html.Div([
             ], md=12, className="p-0 position-relative")
         ], className="g-0"),
         
-        # Collapsible alerts panel
+        # Elegant alerts dropdown
         dbc.Collapse([
-            dbc.Card([
-                dbc.CardHeader([
-                    html.H5([
-                        html.I(className="fas fa-exclamation-triangle me-2"),
-                        "Supply Chain Alerts"
-                    ], className="mb-0 text-white")
-                ], className="bg-primary"),
-                dbc.CardBody([
-                    html.Div(id="alerts-list", style={"maxHeight": "400px", "overflowY": "auto"})
-                ], className="p-3")
-            ], className="glass-card mt-3", style={"position": "relative", "zIndex": "9999"})
-        ], id="alerts-collapse", is_open=False, style={"position": "relative", "zIndex": "9999"}),
+            html.Div([
+                html.Div([
+                    html.H6([
+                        html.I(className="fas fa-bell me-2", style={"color": "#ef4444"}),
+                        "Alerts"
+                    ], className="mb-2 text-white fw-bold"),
+                    html.Div(id="alerts-list", style={
+                        "maxHeight": "350px", 
+                        "overflowY": "auto",
+                        "overflowX": "hidden"
+                    })
+                ], style={
+                    "padding": "16px",
+                    "backgroundColor": "rgba(15, 23, 42, 0.95)",
+                    "backdropFilter": "blur(20px)",
+                    "border": "1px solid rgba(59, 130, 246, 0.3)",
+                    "borderRadius": "12px",
+                    "boxShadow": "0 20px 40px rgba(0, 0, 0, 0.3)",
+                    "minWidth": "320px",
+                    "maxWidth": "400px"
+                })
+            ], style={
+                "position": "fixed",
+                "top": "70px",
+                "right": "20px",
+                "zIndex": "9999",
+                "animation": "slideDown 0.3s ease-out"
+            })
+        ], id="alerts-collapse", is_open=False),
+        
+        # Risk Factors dropdown
+        dbc.Collapse([
+            html.Div([
+                # Header
+                html.H6([
+                    html.I(className="fas fa-bars me-2", style={"color": "#f59e0b"}),
+                    "Risk Factors"
+                ], className="mb-3 text-white fw-bold"),
+                
+                # Climate & Weather
+                html.Div([
+                    dbc.Switch(
+                        id="climate-toggle", 
+                        value=False,
+                        label="Climate & Weather",
+                        style={"color": "white"}
+                    )
+                ], className="mb-2"),
+                
+                # Agricultural Monitoring  
+                html.Div([
+                    dbc.Switch(
+                        id="agriculture-toggle", 
+                        value=False,
+                        label="Agricultural Monitoring",
+                        style={"color": "white"}
+                    )
+                ], className="mb-2"),
+                
+                # Transportation & Logistics
+                html.Div([
+                    dbc.Switch(
+                        id="transport-toggle", 
+                        value=False,
+                        label="Transportation & Logistics",
+                        style={"color": "white"}
+                    )
+                ])
+                
+            ], style={
+                "position": "fixed",
+                "top": "70px",
+                "right": "180px",
+                "zIndex": "9999",
+                "padding": "16px",
+                "backgroundColor": "rgba(15, 23, 42, 0.95)",
+                "backdropFilter": "blur(20px)",
+                "border": "1px solid rgba(245, 158, 11, 0.3)",
+                "borderRadius": "12px",
+                "boxShadow": "0 20px 40px rgba(0, 0, 0, 0.3)",
+                "minWidth": "320px",
+                "animation": "slideDown 0.3s ease-out"
+            })
+        ], id="indicators-collapse", is_open=False),
         
     ], fluid=True, className="h-100")
 ], style={
@@ -812,9 +877,55 @@ def select_supplier(n_clicks_list, ids, current_selected):
 )
 def toggle_alerts(n_clicks, is_open):
     """Toggle the alerts panel visibility."""
-    if n_clicks is None:
+    print(f"Alert button clicked! n_clicks: {n_clicks}, is_open: {is_open}")
+    if n_clicks is None or n_clicks == 0:
         return False
-    return not is_open
+    new_state = not is_open
+    print(f"Setting alerts panel to: {new_state}")
+    return new_state
+
+
+# ----------------------------------
+# Indicators dropdown callback
+# ----------------------------------
+@app.callback(
+    Output("indicators-collapse", "is_open"),
+    Input("indicators-toggle", "n_clicks"),
+    State("indicators-collapse", "is_open")
+)
+def toggle_indicators(n_clicks, is_open):
+    """Toggle the indicators dropdown visibility."""
+    print(f"Indicators button clicked! n_clicks: {n_clicks}, is_open: {is_open}")
+    if n_clicks is None or n_clicks == 0:
+        return False
+    new_state = not is_open
+    print(f"Setting indicators dropdown to: {new_state}")
+    return new_state
+
+
+# ----------------------------------
+# Data layer toggle callbacks
+# ----------------------------------
+@app.callback(
+    Output("climate-toggle", "label"),
+    Input("climate-toggle", "value")
+)
+def update_climate_label(value):
+    return "Climate & Weather: ON" if value else "Climate & Weather: OFF"
+
+@app.callback(
+    Output("agriculture-toggle", "label"), 
+    Input("agriculture-toggle", "value")
+)
+def update_agriculture_label(value):
+    return "Agricultural Monitoring: ON" if value else "Agricultural Monitoring: OFF"
+
+@app.callback(
+    Output("transport-toggle", "label"),
+    Input("transport-toggle", "value") 
+)
+def update_transport_label(value):
+    return "Transportation & Logistics: ON" if value else "Transportation & Logistics: OFF"
 
 
 # ----------------------------------

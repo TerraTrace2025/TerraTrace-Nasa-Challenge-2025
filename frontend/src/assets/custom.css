@@ -298,4 +298,51 @@ h1, h2, h3, h4, h5, h6 {
         opacity: 1;
         transform: scale(1.02);
     }
+}/* Alert
+s Dropdown Animation */
+@keyframes slideDown {
+    0% {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Alert Dropdown Item Hover */
+.alert-dropdown-item:hover {
+    background: rgba(59, 130, 246, 0.1) !important;
+    transform: translateX(2px);
+}
+
+/* Custom Scrollbar for Alerts */
+#alerts-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+#alerts-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+#alerts-list::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.4);
+    border-radius: 3px;
+}
+
+#alerts-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(59, 130, 246, 0.6);
+}/* Swit
+ch Label Styling */
+.form-check-label {
+    color: white !important;
+    font-size: 0.9em !important;
+    margin-left: 8px !important;
+}
+
+/* Risk Factors Dropdown Switch Labels */
+#indicators-collapse .form-check-label {
+    color: white !important;
 }
