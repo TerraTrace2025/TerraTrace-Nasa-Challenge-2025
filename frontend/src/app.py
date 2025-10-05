@@ -671,19 +671,19 @@ app.layout = html.Div([
                         "boxShadow": "none"
                     }),
                     
-                    # Analytics/Dashboard icon
-                    html.Div([
+                    # Analytics/Dashboard button
+                    dbc.Button([
                         html.I(className="fas fa-chart-bar", style={
                             "color": "#e5e7eb", 
-                            "fontSize": "20px",
-                            "cursor": "pointer",
-                            "transition": "all 0.3s ease",
-                            "filter": "drop-shadow(0 2px 6px rgba(229, 231, 235, 0.4))"
+                            "fontSize": "20px"
                         })
-                    ], id="analytics-toggle", className="me-2 d-flex align-items-center justify-content-center", style={
-                        "width": "40px", 
-                        "height": "40px",
-                        "cursor": "pointer"
+                    ], id="analytics-toggle", className="me-2",
+                    color="link",
+                    style={
+                        "backgroundColor": "transparent",
+                        "border": "none",
+                        "padding": "8px",
+                        "boxShadow": "none"
                     })
                 ], className="d-flex justify-content-end align-items-center", style={
                     "paddingRight": "10px"
@@ -930,6 +930,153 @@ app.layout = html.Div([
                 "animation": "slideUp 0.3s ease-out"
             })
         ], id="chat-collapse", is_open=False),
+        
+        # Analytics Dashboard
+        dbc.Collapse([
+            html.Div([
+                # Dashboard Header
+                html.Div([
+                    html.H4([
+                        html.I(className="fas fa-chart-bar me-3", style={"color": "#e5e7eb"}),
+                        "Swiss Corp Analytics Dashboard"
+                    ], className="text-white fw-bold mb-0"),
+                    dbc.Button([
+                        html.I(className="fas fa-times")
+                    ], color="link", size="sm", id="analytics-close", style={
+                        "color": "white", 
+                        "padding": "0",
+                        "border": "none"
+                    })
+                ], className="d-flex justify-content-between align-items-center mb-4"),
+                
+                # 4x4 Dashboard Grid
+                html.Div([
+                    # Row 1
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Supplier Risk Overview", className="text-white mb-3"),
+                                html.Div(id="risk-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "0.1s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Alert Trends", className="text-white mb-3"),
+                                html.Div(id="alert-trends-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "0.2s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Crop Performance", className="text-white mb-3"),
+                                html.Div(id="crop-performance-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "0.3s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Weather Impact", className="text-white mb-3"),
+                                html.Div(id="weather-impact-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "0.4s"})
+                        ], md=3)
+                    ], className="mb-3"),
+                    
+                    # Row 2
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Transport Efficiency", className="text-white mb-3"),
+                                html.Div(id="transport-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "0.5s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Supply Chain KPIs", className="text-white mb-3"),
+                                html.Div(id="kpi-metrics")
+                            ], className="dashboard-panel", style={"animationDelay": "0.6s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Regional Distribution", className="text-white mb-3"),
+                                html.Div(id="regional-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "0.7s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Cost Analysis", className="text-white mb-3"),
+                                html.Div(id="cost-analysis-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "0.8s"})
+                        ], md=3)
+                    ], className="mb-3"),
+                    
+                    # Row 3
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Inventory Levels", className="text-white mb-3"),
+                                html.Div(id="inventory-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "0.9s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Delivery Performance", className="text-white mb-3"),
+                                html.Div(id="delivery-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "1.0s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Quality Metrics", className="text-white mb-3"),
+                                html.Div(id="quality-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "1.1s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Sustainability Score", className="text-white mb-3"),
+                                html.Div(id="sustainability-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "1.2s"})
+                        ], md=3)
+                    ], className="mb-3"),
+                    
+                    # Row 4
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Market Trends", className="text-white mb-3"),
+                                html.Div(id="market-trends-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "1.3s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Forecast Accuracy", className="text-white mb-3"),
+                                html.Div(id="forecast-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "1.4s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Compliance Status", className="text-white mb-3"),
+                                html.Div(id="compliance-chart")
+                            ], className="dashboard-panel", style={"animationDelay": "1.5s"})
+                        ], md=3),
+                        dbc.Col([
+                            html.Div([
+                                html.H6("Performance Summary", className="text-white mb-3"),
+                                html.Div(id="summary-metrics")
+                            ], className="dashboard-panel", style={"animationDelay": "1.6s"})
+                        ], md=3)
+                    ])
+                ], className="dashboard-grid")
+                
+            ], style={
+                "position": "fixed",
+                "top": "0",
+                "left": "0",
+                "right": "0",
+                "bottom": "0",
+                "zIndex": "10000",
+                "padding": "20px",
+                "backgroundColor": "rgba(15, 23, 42, 0.98)",
+                "backdropFilter": "blur(20px)",
+                "overflowY": "auto"
+            })
+        ], id="analytics-collapse", is_open=False),
         
     ], fluid=True, className="h-100")
 ], style={
@@ -1183,6 +1330,263 @@ def get_fallback_response(user_message: str) -> str:
     
     else:
         return f"🤖 **Swiss Corp Assistant**: I understand you're asking about '{user_message}'. I can help with: **Suppliers** (risk analysis, alternatives), **Alerts** (prioritization, actions), **Weather** (impact assessment), **Logistics** (route optimization), **Crops** (harvest status, alternatives). What would you like to explore? *(Note: For enhanced AI responses, set up OpenAI integration)*"
+
+
+# ----------------------------------
+# Analytics Dashboard callbacks
+# ----------------------------------
+@app.callback(
+    Output("analytics-collapse", "is_open"),
+    [Input("analytics-toggle", "n_clicks"), Input("analytics-close", "n_clicks")],
+    State("analytics-collapse", "is_open")
+)
+def toggle_analytics(analytics_clicks, close_clicks, is_open):
+    """Toggle the analytics dashboard visibility."""
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return False
+    
+    button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    print(f"Analytics button clicked: {button_id}")
+    
+    if button_id == "analytics-toggle" and analytics_clicks:
+        return not is_open
+    elif button_id == "analytics-close" and close_clicks:
+        return False
+    
+    return is_open
+
+# Dashboard chart generation callbacks
+@app.callback(
+    [Output("risk-chart", "children"),
+     Output("alert-trends-chart", "children"),
+     Output("crop-performance-chart", "children"),
+     Output("weather-impact-chart", "children"),
+     Output("transport-chart", "children"),
+     Output("kpi-metrics", "children"),
+     Output("regional-chart", "children"),
+     Output("cost-analysis-chart", "children"),
+     Output("inventory-chart", "children"),
+     Output("delivery-chart", "children"),
+     Output("quality-chart", "children"),
+     Output("sustainability-chart", "children"),
+     Output("market-trends-chart", "children"),
+     Output("forecast-chart", "children"),
+     Output("compliance-chart", "children"),
+     Output("summary-metrics", "children")],
+    Input("analytics-collapse", "is_open")
+)
+def generate_dashboard_charts(is_open):
+    """Generate all dashboard charts when analytics panel opens."""
+    if not is_open:
+        return [None] * 16
+    
+    # Generate all charts
+    charts = [
+        create_risk_chart(),
+        create_alert_trends_chart(),
+        create_crop_performance_chart(),
+        create_weather_impact_chart(),
+        create_transport_chart(),
+        create_kpi_metrics(),
+        create_regional_chart(),
+        create_cost_analysis_chart(),
+        create_inventory_chart(),
+        create_delivery_chart(),
+        create_quality_chart(),
+        create_sustainability_chart(),
+        create_market_trends_chart(),
+        create_forecast_chart(),
+        create_compliance_chart(),
+        create_summary_metrics()
+    ]
+    
+    return charts
+
+# Chart creation functions
+def create_risk_chart():
+    """Create supplier risk overview chart."""
+    suppliers = ["Fenaco", "Alpine", "Swiss Valley", "Organic", "Bavarian"]
+    risk_scores = [25, 65, 30, 85, 20]
+    colors = ['#22c55e', '#f59e0b', '#22c55e', '#ef4444', '#22c55e']
+    
+    fig = go.Figure(data=[
+        go.Bar(x=suppliers, y=risk_scores, marker_color=colors)
+    ])
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font_color='white',
+        height=200,
+        margin=dict(l=0,r=0,t=0,b=0),
+        yaxis_title="Risk Score"
+    )
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_alert_trends_chart():
+    """Create alert trends chart."""
+    dates = pd.date_range('2025-01-01', periods=7, freq='D')
+    alerts = [3, 5, 4, 7, 6, 8, 7]
+    
+    fig = go.Figure(data=[
+        go.Scatter(x=dates, y=alerts, mode='lines+markers', 
+                  line=dict(color='#ef4444', width=3),
+                  marker=dict(size=8))
+    ])
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font_color='white',
+        height=200,
+        margin=dict(l=0,r=0,t=0,b=0),
+        yaxis_title="Active Alerts"
+    )
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_crop_performance_chart():
+    """Create crop performance chart."""
+    crops = ["Soybeans", "Rice", "Dairy", "Grapes", "Corn"]
+    performance = [60, 75, 70, 125, 110]
+    colors = ['#ef4444', '#f59e0b', '#f59e0b', '#22c55e', '#22c55e']
+    
+    fig = go.Figure(data=[
+        go.Bar(x=crops, y=performance, marker_color=colors)
+    ])
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font_color='white',
+        height=200,
+        margin=dict(l=0,r=0,t=0,b=0),
+        yaxis_title="Performance %"
+    )
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_weather_impact_chart():
+    """Create weather impact gauge."""
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = 75,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': "Impact Level"},
+        gauge = {
+            'axis': {'range': [None, 100]},
+            'bar': {'color': "#f59e0b"},
+            'steps': [
+                {'range': [0, 50], 'color': "#22c55e"},
+                {'range': [50, 80], 'color': "#f59e0b"},
+                {'range': [80, 100], 'color': "#ef4444"}],
+            'threshold': {
+                'line': {'color': "white", 'width': 4},
+                'thickness': 0.75,
+                'value': 90}}))
+    
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font_color='white',
+        height=200,
+        margin=dict(l=0,r=0,t=0,b=0)
+    )
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_transport_chart():
+    """Create transport efficiency donut chart."""
+    fig = go.Figure(data=[go.Pie(
+        labels=['On Time', 'Delayed', 'Early'],
+        values=[70, 20, 10],
+        hole=.6,
+        marker_colors=['#22c55e', '#ef4444', '#60a5fa']
+    )])
+    
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font_color='white',
+        height=200,
+        margin=dict(l=0,r=0,t=0,b=0),
+        showlegend=False
+    )
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_kpi_metrics():
+    """Create KPI metrics display."""
+    return html.Div([
+        html.Div([
+            html.H3("92%", className="text-success mb-0"),
+            html.Small("Delivery Rate", className="text-muted")
+        ], className="text-center mb-2"),
+        html.Div([
+            html.H3("2.3d", className="text-info mb-0"),
+            html.Small("Avg Delivery", className="text-muted")
+        ], className="text-center mb-2"),
+        html.Div([
+            html.H3("€1.2M", className="text-warning mb-0"),
+            html.Small("Monthly Cost", className="text-muted")
+        ], className="text-center")
+    ])
+
+# Simplified versions for remaining charts
+def create_regional_chart():
+    regions = ["Switzerland", "Germany", "Austria", "Italy", "France"]
+    suppliers = [4, 2, 2, 1, 1]
+    fig = go.Figure(data=[go.Pie(labels=regions, values=suppliers, marker_colors=['#60a5fa', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'])])
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', height=200, margin=dict(l=0,r=0,t=0,b=0), showlegend=False)
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_cost_analysis_chart():
+    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May']
+    costs = [1.1, 1.3, 1.2, 1.4, 1.2]
+    fig = go.Figure(data=[go.Scatter(x=months, y=costs, mode='lines+markers', line=dict(color='#f59e0b', width=3))])
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', height=200, margin=dict(l=0,r=0,t=0,b=0), yaxis_title="Cost (€M)")
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_inventory_chart():
+    items = ["Grains", "Dairy", "Produce"]
+    levels = [85, 60, 95]
+    colors = ['#22c55e', '#f59e0b', '#22c55e']
+    fig = go.Figure(data=[go.Bar(x=items, y=levels, marker_color=colors)])
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', height=200, margin=dict(l=0,r=0,t=0,b=0), yaxis_title="Stock %")
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_delivery_chart():
+    fig = go.Figure(go.Indicator(mode="gauge+number", value=92, title={'text': "On-Time %"}, gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#22c55e"}}))
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', height=200, margin=dict(l=0,r=0,t=0,b=0))
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_quality_chart():
+    fig = go.Figure(go.Indicator(mode="gauge+number", value=88, title={'text': "Quality Score"}, gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#60a5fa"}}))
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', height=200, margin=dict(l=0,r=0,t=0,b=0))
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_sustainability_chart():
+    fig = go.Figure(go.Indicator(mode="gauge+number", value=76, title={'text': "Sustainability"}, gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#22c55e"}}))
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', height=200, margin=dict(l=0,r=0,t=0,b=0))
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_market_trends_chart():
+    weeks = ['W1', 'W2', 'W3', 'W4']
+    prices = [100, 105, 98, 110]
+    fig = go.Figure(data=[go.Scatter(x=weeks, y=prices, mode='lines+markers', line=dict(color='#8b5cf6', width=3))])
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', height=200, margin=dict(l=0,r=0,t=0,b=0), yaxis_title="Price Index")
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_forecast_chart():
+    fig = go.Figure(go.Indicator(mode="gauge+number", value=85, title={'text': "Accuracy %"}, gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#f59e0b"}}))
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', height=200, margin=dict(l=0,r=0,t=0,b=0))
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_compliance_chart():
+    fig = go.Figure(go.Indicator(mode="gauge+number", value=94, title={'text': "Compliance %"}, gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#22c55e"}}))
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white', height=200, margin=dict(l=0,r=0,t=0,b=0))
+    return dcc.Graph(figure=fig, config={'displayModeBar': False})
+
+def create_summary_metrics():
+    return html.Div([
+        html.Div([html.H4("10", className="text-primary mb-0"), html.Small("Active Suppliers", className="text-muted")], className="text-center mb-2"),
+        html.Div([html.H4("7", className="text-danger mb-0"), html.Small("Active Alerts", className="text-muted")], className="text-center mb-2"),
+        html.Div([html.H4("5", className="text-success mb-0"), html.Small("Countries", className="text-muted")], className="text-center")
+    ])
 
 
 # ----------------------------------
