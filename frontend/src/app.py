@@ -1,6 +1,5 @@
 import os
 import logging
-import uvicorn
 import json
 import math
 import requests
@@ -31,11 +30,46 @@ CONTAINER_STYLE = {"height": "100vh", "overflow": "hidden", "padding": "0"}
 # Config
 # ----------------------------
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000/api")
-
+USE_MOCK_DATA = os.getenv("USE_MOCK_DATA", "true").lower() == "true"
 USE_OSRM = os.getenv("USE_OSRM", "true").lower() == "true"
 REFRESH_MS = int(os.getenv("REFRESH_MS", "30000"))  # 30s
 DEFAULT_COMPANY_ID = int(os.getenv("COMPANY_ID", "1"))
 APP_PORT = int(os.getenv("PORT", "8051"))
+
+# ----------------------------
+# Mock Data for Swiss Corp
+# ----------------------------
+MOCK_COMPANY = {
+    "id": 1,
+    "name": "Swiss Corp",
+    "latitude": 47.3769,
+    "longitude": 8.5417,
+    "city": "Zurich",
+    "country": "Switzerland"
+}
+
+MOCK_SUPPLIERS = [
+    {"id": 1, "name": "Fenaco Genossenschaft", "latitude": 46.9481, "longitude": 7.4474, "city": "Bern", "country": "Switzerland", "tier": "SURPLUS", "transport_modes": "Truck,Train"},
+    {"id": 2, "name": "Alpine Farms AG", "latitude": 47.6062, "longitude": 8.1090, "city": "Thurgau", "country": "Switzerland", "tier": "RISK", "transport_modes": "Truck"},
+    {"id": 3, "name": "Swiss Valley Produce", "latitude": 47.2692, "longitude": 11.4041, "city": "Innsbruck", "country": "Austria", "tier": "SURPLUS", "transport_modes": "Truck,Train"},
+    {"id": 4, "name": "Organic Harvest Co", "latitude": 47.0502, "longitude": 8.3093, "city": "Lucerne", "country": "Switzerland", "tier": "HIGHRISK", "transport_modes": "Truck"},
+    {"id": 5, "name": "Bavarian Grain Collective", "latitude": 48.1351, "longitude": 11.5820, "city": "Munich", "country": "Germany", "tier": "SURPLUS", "transport_modes": "Truck,Train"},
+    {"id": 6, "name": "Rhône Valley Vineyards", "latitude": 46.2044, "longitude": 6.1432, "city": "Geneva", "country": "Switzerland", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 7, "name": "Lombardy Agricultural Union", "latitude": 45.4642, "longitude": 9.1900, "city": "Milan", "country": "Italy", "tier": "RISK", "transport_modes": "Truck,Train"},
+    {"id": 8, "name": "Black Forest Organics", "latitude": 48.0196, "longitude": 7.8421, "city": "Freiburg", "country": "Germany", "tier": "SURPLUS", "transport_modes": "Truck"},
+    {"id": 9, "name": "Alsace Premium Produce", "latitude": 48.5734, "longitude": 7.7521, "city": "Strasbourg", "country": "France", "tier": "RISK", "transport_modes": "Truck,Train"},
+    {"id": 10, "name": "Tyrolean Mountain Farms", "latitude": 47.0707, "longitude": 15.4395, "city": "Graz", "country": "Austria", "tier": "HIGHRISK", "transport_modes": "Truck"}
+]
+
+MOCK_ALERTS = [
+    {"id": 1, "company_id": 1, "supplier_id": 4, "crop_type": "soybeans", "severity": "HIGHRISK", "title": "Critical drought conditions", "message": "Severe drought affecting soybean harvest. 40% yield reduction expected.", "created_at": "2025-01-04T10:30:00"},
+    {"id": 2, "company_id": 1, "supplier_id": 2, "crop_type": "potatoes", "severity": "RISK", "title": "Storage conditions deteriorating", "message": "Temperature fluctuations in storage facility.", "created_at": "2025-01-04T08:15:00"},
+    {"id": 3, "company_id": 1, "supplier_id": 7, "crop_type": "rice", "severity": "RISK", "title": "Flooding concerns in Lombardy", "message": "Heavy rainfall affecting rice paddies.", "created_at": "2025-01-04T14:20:00"},
+    {"id": 4, "company_id": 1, "supplier_id": 10, "crop_type": "dairy", "severity": "HIGHRISK", "title": "Alpine dairy disrupted", "message": "Extreme weather affecting mountain operations.", "created_at": "2025-01-04T11:45:00"},
+    {"id": 5, "company_id": 1, "supplier_id": 6, "crop_type": "grapes", "severity": "SURPLUS", "title": "Exceptional grape harvest", "message": "25% above-average yield available.", "created_at": "2025-01-03T09:30:00"},
+    {"id": 6, "company_id": 1, "supplier_id": 9, "crop_type": "wine_grapes", "severity": "SURPLUS", "title": "Alsace wine grape surplus", "message": "Premium grapes available at special pricing.", "created_at": "2025-01-02T16:15:00"},
+    {"id": 7, "company_id": 1, "supplier_id": 3, "crop_type": "corn", "severity": "SURPLUS", "title": "Excellent corn harvest", "message": "Additional 500t available at discounted rates.", "created_at": "2025-01-03T16:45:00"}
+]
 
 
 # ----------------------------
@@ -277,7 +311,7 @@ def osrm_route(a: tuple, b: tuple) -> Optional[Dict[str, Any]]:
         return None
 
 def build_supplier_routes(company: Dict[str, Any], suppliers: List[Dict[str, Any]]) -> List[Any]:
-    """Erzeuge Polyline-Layer von jedem Supplier zur Company-Location."""
+    """Build polyline routes from each supplier to company location using OSRM routing."""
     if not company or not company.get("Lat") or not company.get("Lon"):
         return []
 
@@ -289,8 +323,10 @@ def build_supplier_routes(company: Dict[str, Any], suppliers: List[Dict[str, Any
         src = (s["Lat"], s["Lon"])
         routed = osrm_route(src, target)
         if routed and routed.get("coords"):
+            # Use actual routed path
             line = dl.Polyline(positions=routed["coords"], color="#2563eb", weight=3, opacity=0.8)
         else:
+            # Fallback to straight line if routing fails
             line = dl.Polyline(positions=[src, target], color="#2563eb", weight=3, dashArray="5,5")
         polylines.append(line)
     return polylines
@@ -333,7 +369,7 @@ def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: 
         marker_children.append(comp_marker)
     marker_children.extend([marker_for_supplier(s, selected_supplier_id) for s in suppliers if s.get("Lat") and s.get("Lon")])
 
-    # Routen + Alerts as before...
+    # Routes with proper OSRM routing
     route_layers = build_supplier_routes(company, suppliers)
 
     # Alert overlays (CircleMarkers) at supplier if SupplierId present, else at company
@@ -366,12 +402,16 @@ def build_map(company: Dict[str, Any], suppliers: List[Dict[str, Any]], alerts: 
         )
 
     children = [
-        dl.TileLayer(),
+        dl.TileLayer(
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        ),
         dl.LayerGroup(alert_overlays, id="alert-overlays"),
         dl.LayerGroup(marker_children, id="entity-markers"),
         dl.LayerGroup(route_layers, id="route-layers"),
     ]
-    return dl.Map(center=(47.0, 8.0), zoom=6, children=children, style={"height": "89vh", "width": "100%"})
+    # Center on Zurich with appropriate zoom level
+    return dl.Map(center=(47.3769, 8.5417), zoom=8, children=children, style={"height": "calc(100vh - 80px)", "width": "100%"})
 
 def recommendations_panel(recs: Dict[str, Any], suppliers_index: Dict[Any, Dict[str, Any]]):
     items = []
@@ -517,83 +557,222 @@ def build_alerts_from_api(company_id: Optional[int], token: str) -> List[Dict[st
 # ----------------------------
 # Dash App
 # ----------------------------
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
+app = Dash(__name__, 
+          external_stylesheets=[
+              dbc.themes.BOOTSTRAP,
+              "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css",
+              "/assets/custom.css"
+          ], 
+          suppress_callback_exceptions=True)
 server = app.server
-app.title = "TerraTrace - Climate-Smart Supply Chains"
+app.title = "NASA Supply Chain Analytics Platform"
 
-sidebar = dbc.Card([
-    dbc.CardBody([
-        html.H5("Available Suppliers"),
-        html.Div(id="suppliers-list", style={"maxHeight": "35vh", "overflowY": "auto"}),
-        html.Hr(),
-        html.H5("Available Stock"),
-        html.Div(id="stocks-list", style={"maxHeight": "35vh", "overflowY": "auto"})
-    ])
-], className="h-100", style={"position": "relative", "zIndex": 10})  # <-- über Hintergrund
+# Disable dev tools
+app.config.suppress_callback_exceptions = True
 
 
 
-content = dbc.Row([
-            dbc.Col(html.Div(id="map-container", style={"position": "relative", "zIndex": 10}), md=8),  # <-- Map über Hintergrund
-            dbc.Col(
-                dbc.Card([
-                    dbc.CardHeader("Alerts"),
-                    dbc.CardBody(
-                        html.Div(
-                            id="alerts-list",
-                            style={
-                                "maxHeight": "78.9vh",   # same as map height
-                                "overflowY": "auto"   # enable vertical scrolling
-                            }
-                        )
-                    )
-                ], style={"position": "relative", "zIndex": 10}),  # <-- Alerts-Card über Hintergrund
-                md=4
-            ),
-        ], className="mt-2"), dcc.Interval(id="tick", interval=REFRESH_MS, n_intervals=0)
 
-
+# Elegant NASA-themed layout with starfield background
 app.layout = html.Div([
-    dcc.Store(id="token-store"),
+    dcc.Store(id="token-store", data="mock-token"),  # Auto-login with mock token
     dcc.Store(id="selected-supplier-id"),
-
-    # Login Card
-    dbc.Card([
-        html.H3("Login", className="text-center mb-4"),
-        dbc.Label("Company Name"),
-        dbc.Input(id="company-name", type="text", placeholder="Enter company name", className="mb-3"),
-        dbc.Label("Password"),
-        dbc.Input(id="password", type="password", placeholder="Enter password", className="mb-3"),
-        dbc.Button("Login", id="login-button", color="primary", className="d-block w-100"),
-        html.Div(id="login-feedback", className="mt-3 text-center text-danger")
-    ], style=CARD_STYLE, id="login-card"),
-
-    # Dashboard container (hidden until login)
+    
+    # Animated starfield background
+    html.Div(id="starfield", children=[
+        html.Div(className="star", style={
+            "left": f"{i*7 % 100}%", 
+            "top": f"{i*11 % 100}%",
+            "animationDelay": f"{i*0.1}s"
+        }) for i in range(200)
+    ]),
+    
+    # Main dashboard - no login required
     dbc.Container([
+        # Header with NASA branding
         dbc.Row([
-    dbc.Col(
-        html.H3(
-            "TerraTrace — Climate-Smart Supply Chains",
-            style={"color": "white"}  # <-- Überschrift weiß
-        ),
-        md=8
-    ),
-], className="mt-2"),
+            dbc.Col([
+                html.H2([
+                    html.I(className="fas fa-satellite me-3"),
+                    "NASA Supply Chain Analytics Platform"
+                ], className="text-white fw-bold mb-1", style={"textShadow": "2px 2px 4px rgba(0,0,0,0.5)"}),
+                html.H5("Welcome Swiss Corp", className="fw-light mb-0", style={"color": "#60a5fa", "textShadow": "1px 1px 2px rgba(0,0,0,0.5)"})
+            ], md=8),
+            dbc.Col([
+                # Header icons - sleek and elegant
+                html.Div([
+                    # Alert/Notification icon with count
+                    html.Div([
+                        html.I(className="fas fa-exclamation-triangle", style={
+                            "color": "#ef4444", 
+                            "fontSize": "20px",
+                            "cursor": "pointer",
+                            "transition": "all 0.3s ease",
+                            "filter": "drop-shadow(0 2px 4px rgba(0,0,0,0.3))"
+                        }),
+                        dbc.Badge("7", color="danger", className="position-absolute", style={
+                            "fontSize": "0.6em",
+                            "top": "-8px",
+                            "right": "-8px",
+                            "minWidth": "18px",
+                            "height": "18px",
+                            "borderRadius": "50%",
+                            "display": "flex",
+                            "alignItems": "center",
+                            "justifyContent": "center"
+                        })
+                    ], id="alerts-toggle", className="me-4 position-relative d-flex align-items-center justify-content-center", style={
+                        "width": "40px", 
+                        "height": "40px",
+                        "cursor": "pointer"
+                    }),
+                    
+                    # Chat/Message icon
+                    html.Div([
+                        html.I(className="fas fa-comment-dots", style={
+                            "color": "#10b981", 
+                            "fontSize": "20px",
+                            "cursor": "pointer",
+                            "transition": "all 0.3s ease",
+                            "filter": "drop-shadow(0 2px 6px rgba(16, 185, 129, 0.3))"
+                        })
+                    ], id="chat-toggle", className="me-4 d-flex align-items-center justify-content-center", style={
+                        "width": "40px", 
+                        "height": "40px",
+                        "cursor": "pointer"
+                    }),
+                    
+                    # Dropdown/Menu icon for indicators
+                    html.Div([
+                        html.I(className="fas fa-bars", style={
+                            "color": "#f59e0b", 
+                            "fontSize": "20px",
+                            "cursor": "pointer",
+                            "transition": "all 0.3s ease",
+                            "filter": "drop-shadow(0 2px 6px rgba(245, 158, 11, 0.3))"
+                        })
+                    ], id="indicators-toggle", className="me-4 d-flex align-items-center justify-content-center", style={
+                        "width": "40px", 
+                        "height": "40px",
+                        "cursor": "pointer"
+                    }),
+                    
+                    # Analytics/Dashboard icon
+                    html.Div([
+                        html.I(className="fas fa-chart-bar", style={
+                            "color": "#e5e7eb", 
+                            "fontSize": "20px",
+                            "cursor": "pointer",
+                            "transition": "all 0.3s ease",
+                            "filter": "drop-shadow(0 2px 6px rgba(229, 231, 235, 0.4))"
+                        })
+                    ], id="analytics-toggle", className="me-2 d-flex align-items-center justify-content-center", style={
+                        "width": "40px", 
+                        "height": "40px",
+                        "cursor": "pointer"
+                    })
+                ], className="d-flex justify-content-end align-items-center", style={
+                    "paddingRight": "10px"
+                })
+            ], md=4)
+        ], className="mb-3 pt-3"),
+        
+        # Main content area - Full screen map
         dbc.Row([
-            dbc.Col(sidebar, md=3, style={"height": "100%"}),
-            dbc.Col(content, md=9, style={"height": "100%"}),
-        ], style={"height": "90%"}, className="mt-2"),
-    ], id="dashboard-container", style={"display": "none", **CONTAINER_STYLE, "position": "relative", "zIndex": 10})
-],
-# <<< HINTERGRUND HIER FESTLEGEN >>>
-style={
+            dbc.Col([
+                dcc.Loading(
+                    id="map-loading",
+                    type="default",
+                    color="#60a5fa",
+                    children=[
+                        html.Div(id="map-container", style={"minHeight": "calc(100vh - 80px)"})
+                    ],
+                    custom_spinner=html.Div([
+                        html.Div([
+                            # Rocket with exhaust flames
+                            html.Div([
+                                html.I(className="fas fa-rocket", style={
+                                    "fontSize": "48px",
+                                    "color": "#60a5fa",
+                                    "position": "relative",
+                                    "zIndex": "2"
+                                }),
+                                # Exhaust flames
+                                html.Div(className="rocket-exhaust", style={
+                                    "position": "absolute",
+                                    "bottom": "-20px",
+                                    "left": "50%",
+                                    "transform": "translateX(-50%)",
+                                    "width": "20px",
+                                    "height": "30px",
+                                    "background": "linear-gradient(to bottom, #f97316, #ef4444, transparent)",
+                                    "borderRadius": "50% 50% 50% 50% / 60% 60% 40% 40%",
+                                    "animation": "flameFlicker 0.3s ease-in-out infinite alternate"
+                                }),
+                                # Smoke trail
+                                html.Div(className="smoke-trail", style={
+                                    "position": "absolute",
+                                    "bottom": "-50px",
+                                    "left": "50%",
+                                    "transform": "translateX(-50%)",
+                                    "width": "8px",
+                                    "height": "40px",
+                                    "background": "linear-gradient(to bottom, rgba(156, 163, 175, 0.6), transparent)",
+                                    "borderRadius": "50%",
+                                    "animation": "smokeRise 2s ease-out infinite"
+                                })
+                            ], style={
+                                "position": "relative",
+                                "animation": "rocketLaunch 3s ease-in-out infinite"
+                            })
+                        ], style={
+                            "position": "relative",
+                            "height": "100px",
+                            "display": "flex",
+                            "alignItems": "center",
+                            "justifyContent": "center"
+                        }),
+                        html.Div("Launching...", style={
+                            "color": "#60a5fa",
+                            "marginTop": "30px",
+                            "fontSize": "18px",
+                            "fontWeight": "300",
+                            "letterSpacing": "1px",
+                            "animation": "textPulse 2s ease-in-out infinite"
+                        })
+                    ], style={
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "alignItems": "center",
+                        "justifyContent": "center",
+                        "height": "250px"
+                    })
+                )
+            ], md=12, className="p-0 position-relative")
+        ], className="g-0"),
+        
+        # Collapsible alerts panel
+        dbc.Collapse([
+            dbc.Card([
+                dbc.CardHeader([
+                    html.H5([
+                        html.I(className="fas fa-exclamation-triangle me-2"),
+                        "Supply Chain Alerts"
+                    ], className="mb-0 text-white")
+                ], className="bg-primary"),
+                dbc.CardBody([
+                    html.Div(id="alerts-list", style={"maxHeight": "400px", "overflowY": "auto"})
+                ], className="p-3")
+            ], className="glass-card mt-3", style={"position": "relative", "zIndex": "9999"})
+        ], id="alerts-collapse", is_open=False, style={"position": "relative", "zIndex": "9999"}),
+        
+    ], fluid=True, className="h-100")
+], style={
     "height": "100vh",
     "width": "100vw",
-    "backgroundImage": "url('/assets/background.png')",  # Bild im assets-Ordner
-    "backgroundSize": "cover",
-    "backgroundRepeat": "no-repeat",
-    "backgroundPosition": "center",
-    "position": "relative"
+    "background": "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%)",
+    "position": "relative",
+    "overflow": "hidden"
 })
 
 
@@ -624,94 +803,18 @@ def select_supplier(n_clicks_list, ids, current_selected):
     return supplier_id
 
 # ----------------------------------
-# Login Callback
+# Alerts toggle callback
 # ----------------------------------
 @app.callback(
-    Output("token-store", "data"),
-    Output("login-feedback", "children"),
-    Output("login-card", "style"),
-    Output("dashboard-container", "style"),
-    Input("login-button", "n_clicks"),
-    State("company-name", "value"),
-    State("password", "value"),
-    prevent_initial_call=True
+    Output("alerts-collapse", "is_open"),
+    Input("alerts-toggle", "n_clicks"),
+    State("alerts-collapse", "is_open")
 )
-def login(n_clicks, company_name, password):
-    """Handles user login via API and shows dashboard after success."""
-    if not company_name or not password:
-        return None, "Please enter both fields", CARD_STYLE, {"display": "none", **CONTAINER_STYLE}
-
-    try:
-        response = requests.post(f"{API_BASE_URL}/auth/login", json={
-            "company_name": company_name,
-            "password": password
-        })
-        if response.status_code != 200:
-            logger.warning(f"Login failed for {company_name}: {response.text}")
-            return None, "Invalid credentials", CARD_STYLE, {"display": "none", **CONTAINER_STYLE}
-
-        token = response.json().get("access_token")
-        logger.info(f"Login successful for company '{company_name}'")
-
-        # Hide login card, show dashboard
-        return token, "", {"display": "none"}, {"display": "block", **CONTAINER_STYLE, "position": "relative", "zIndex": 10}
-
-    except Exception as e:
-        logger.exception("Login error")
-        return None, f"Error: {str(e)}", CARD_STYLE, {"display": "none", **CONTAINER_STYLE}
-
-
-@app.callback(
-    Output("suppliers-list", "children"),
-    Input("token-store", "data"),
-    prevent_initial_call=True
-)
-def load_suppliers(token):
-    if not token:
-        return dbc.ListGroup([dbc.ListGroupItem("Please login.")])
-    suppliers_raw = get_suppliers(token)
-    suppliers = normalize_suppliers(suppliers_raw if isinstance(suppliers_raw, list) else [])
-    supplier_items = [
-        dbc.ListGroupItem(
-            f"{s.get('Name','Unknown')} — Tier {s.get('CurrentTier','?')}",
-            id={"type": "supplier-item", "index": s.get("SupplierId")},
-            action=True
-        ) for s in suppliers
-    ]
-    return dbc.ListGroup(supplier_items, flush=True)
-
-
-
-# ----------------------------------
-# Stocks list: refresh when a supplier is selected
-# ----------------------------------
-@app.callback(
-    Output("stocks-list", "children"),
-    Input("selected-supplier-id", "data"),
-    Input("token-store", "data"),
-    prevent_initial_call=True
-)
-def show_supplier_stocks(selected_supplier_id, token):
-    if not token:
-        return dbc.Alert("Please login to see stocks.", color="warning", className="mb-0")
-    if not selected_supplier_id:
-        return dbc.ListGroup([dbc.ListGroupItem("Select a supplier to see available stock.")], flush=True)
-
-    data = get_supplier_stocks(selected_supplier_id, token)
-
-    # handle API errors
-    if not isinstance(data, list):
-        if isinstance(data, dict) and data.get("error"):
-            return dbc.Alert(f"Could not load stocks: {data['error']}", color="danger", className="mb-0")
-        # unexpected shape
-        return dbc.Alert("No stock data available for this supplier.", color="secondary", className="mb-0")
-
-    stocks = normalize_stocks(data)
-    if not stocks:
-        return dbc.ListGroup([dbc.ListGroupItem("No available stock for this supplier.")], flush=True)
-
-    items = [stock_item_card(s) for s in stocks]
-    return dbc.ListGroup(items, flush=True)
+def toggle_alerts(n_clicks, is_open):
+    """Toggle the alerts panel visibility."""
+    if n_clicks is None:
+        return False
+    return not is_open
 
 
 # ----------------------------------
@@ -720,75 +823,66 @@ def show_supplier_stocks(selected_supplier_id, token):
 @app.callback(
     Output("map-container", "children"),
     Output("alerts-list", "children"),
-    Input("tick", "n_intervals"),
     Input("token-store", "data"),
-    Input("selected-supplier-id", "data"),
-    prevent_initial_call=True
+    Input("selected-supplier-id", "data")
 )
-def refresh_dashboard(n, token, selected_supplier_id):
-    # if no token yet
-    if not token:
-        return (
-            html.Div("Please login first."),
-            [html.Div("No alerts (not logged in).")]
-        )
+def refresh_dashboard(token, selected_supplier_id):
+    """Refresh dashboard with elegant full-screen map and alerts."""
+    
+    # Use mock data for Swiss Corp - no login required
+    company = MOCK_COMPANY
+    suppliers = MOCK_SUPPLIERS
+    alerts = MOCK_ALERTS
 
-    # run the API calls once (either immediately after login or every tick)
-    company_raw = get_company(token)
-    company = normalize_company(company_raw)
-    company_id = company.get("CompanyId") or DEFAULT_COMPANY_ID
+    # Normalize data for consistency
+    normalized_suppliers = []
+    for s in suppliers:
+        normalized_suppliers.append({
+            "SupplierId": s["id"],
+            "Name": s["name"],
+            "Lat": s["latitude"],
+            "Lon": s["longitude"],
+            "CurrentTier": s["tier"],
+            "Location": f"{s['city']}, {s['country']}",
+            "_raw": s
+        })
 
-    suppliers_raw = get_suppliers(token)
-    suppliers = normalize_suppliers(suppliers_raw if isinstance(suppliers_raw, list) else [])
-
-    # 🔑 get mappings and filter suppliers
-    mappings = get_company_mappings(token)
-    supplier_ids_in_use = {
-        m.get("supplier_id") for m in mappings if m.get("company_id") == company_id
+    normalized_company = {
+        "CompanyId": company["id"],
+        "Name": company["name"],
+        "Lat": company["latitude"],
+        "Lon": company["longitude"],
+        "City": company["city"],
+        "Country": company["country"]
     }
-    suppliers_in_use = [s for s in suppliers if s.get("SupplierId") in supplier_ids_in_use]
 
-    alerts_raw = build_alerts_from_api(company_id, token)
-    alerts = normalize_alerts(alerts_raw)
+    # Build elegant full-screen map with proper routing
+    map_component = build_map(normalized_company, normalized_suppliers, alerts, selected_supplier_id)
+    
+    # Build alerts list
+    normalized_alerts = []
+    for a in alerts:
+        normalized_alerts.append({
+            "AlertId": a["id"],
+            "CompanyId": a["company_id"],
+            "SupplierId": a["supplier_id"],
+            "CropId": a["crop_type"],
+            "CreatedAt": a["created_at"],
+            "Severity": a["severity"].upper(),
+            "Title": a["title"],
+            "Details": {"message": a["message"]},
+        })
 
-    alerts.sort(key=lambda a: SEVERITY_ORDER.get((a.get("Severity") or "").upper(), 0), reverse=True)
-
-    suppliers_index = {s.get("SupplierId"): s for s in suppliers_in_use}
-    alert_cards = (
-        [alert_card(a, suppliers_index) for a in alerts]
-        if alerts
-        else [html.Div("No alerts at this time.", className="text-muted")]
-    )
-
-    map_obj = build_map(company, suppliers_in_use, alerts, selected_supplier_id)
-
-    # highlight selected supplier if any
-    if selected_supplier_id:
-        sel = next((s for s in suppliers if s.get("SupplierId") == selected_supplier_id), None)
-        if sel and sel.get("Lat") and sel.get("Lon"):
-            map_obj.children.append(
-                dl.CircleMarker(
-                    center=(sel["Lat"], sel["Lon"]),
-                    radius=8,
-                    color='#3b82f6',
-                )
-            )
-
-    return map_obj, alert_cards
+    # Create suppliers index for alert cards
+    suppliers_index = {s["SupplierId"]: s for s in normalized_suppliers}
+    
+    # Sort alerts by severity
+    sorted_alerts = sorted(normalized_alerts, key=lambda x: SEVERITY_ORDER.get(x.get("Severity", "STABLE"), 0), reverse=True)
+    
+    alert_cards = [alert_card(a, suppliers_index) for a in sorted_alerts]
+    
+    return map_component, alert_cards
 
 
-
-# ----------------------------
-# Main
-# ----------------------------
 if __name__ == "__main__":
-    host = os.getenv("FASTAPI_HOST", "127.0.0.1")
-    reload_flag = os.getenv("FASTAPI_RELOAD", "True").lower() in ("true", "1", "yes")
-
-    logger.info("Starting Food-waste frontend...")
-    logger.info(f"Host: {host}, Reload: {reload_flag}")
-
-    if reload_flag:
-        app.run(host=host, port=8050, debug=True)
-    else:
-        uvicorn.run("src.app:app.server", host=host, port=8050, reload=reload_flag)
+    app.run(debug=True, host="0.0.0.0", port=APP_PORT)
